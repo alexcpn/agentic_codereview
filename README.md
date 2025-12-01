@@ -25,7 +25,20 @@ Agentic code review pipeline that plans, calls tools, and produces structured fi
 - MCP server ([codereview_mcp_server](https://github.com/alexcpn/codereview_mcp_server)) exposes AST tools (definitions, call-sites, docstrings) using [Tree-Sitter](https://tree-sitter.github.io/tree-sitter/).
 - Minimal orchestration comes from [nmagents](https://github.com/alexcpn/noagent-ai) Command pattern: plan → optional tool calls → critique/patch suggestions → YAML logs.
 
+Models are effective with very detailed prompts instead of one-liners. Illustration prompt is [prompts/code_review_prompts.txt](prompts/code_review_prompts.txt)  with context populated at place holders.
+
+Results are good if a task can be broken into steps and each step executed in place. This keeps the context tight.
+
+Models which gives good result are GPT 4.1 Nano, GPT 5 Nano. 
+
+Also this will run with any OpenAI API comptatible model; Like ollam (with Microsoft phi3.5 model) and vllm (with Google gemma model) wtih a laptop GPU.
+
+Note that these small models are really not that good with complex tasks like this.
+
+
 ### Core flow (excerpt from `code_review_agent.py`)
+
+
 ```python
 file_diffs = git_utils.get_pr_diff_url(repo_url, pr_number)
 response = call_llm_command.execute(context)                # plan steps
