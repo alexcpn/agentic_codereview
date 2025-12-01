@@ -1,6 +1,6 @@
 ---
 
-title: Code Review Agent based on MCP
+title: Code Review Agentic AI based on MCP
 emoji: 🛰️
 colorFrom: indigo
 colorTo: blue
@@ -9,9 +9,9 @@ app_file: Dockerfile
 pinned: false
 ---
 
-# Agentic AI Code Review in Pure Python (MCP-powered)
+# Agentic AI Code Review in Pure Python - No Agentic Framework
 
-Agentic code review pipeline that plans, calls tools, and produces structured findings without any heavyweight framework. Implemented in plain Python using [uv](https://github.com/astral-sh/uv), [FastAPI](https://fastapi.tiangolo.com/), and [nmagents](https://github.com/alexcpn/noagent-ai). Deep code context comes from a Tree-Sitter-backed Model Context Protocol (MCP) server.
+Agentic code review pipeline that plans, calls tools, and produces structured findings without any heavyweight framework. Implemented in plain Python using [uv](https://github.com/astral-sh/uv), [FastAPI](https://fastapi.tiangolo.com/), and a small footprint wrapper library [nmagents](https://github.com/alexcpn/noagent-ai). Deep code context comes from a Tree-Sitter-backed Model Context Protocol (MCP) server.
 
 ## Why this repo is interesting
 - End-to-end AI review loop in a few hundred lines of Python (`code_review_agent.py`)
@@ -51,7 +51,7 @@ uv sync  # install dependencies from pyproject.toml
 # create .env with OPENAI_API_KEY and optionally CODE_AST_MCP_SERVER_URL
 ```
 
-## Start the Tree-Sitter MCP server
+## Start the Code Review MCP server
 ```bash
 git clone https://github.com/alexcpn/codereview_mcp_server.git
 cd codereview_mcp_server
@@ -75,21 +75,38 @@ curl "http://127.0.0.1:8860/review?repo_url=https://github.com/huggingface/accel
 ```
 - Optional webhook-style POST: `python client.py --use-webhook ...` (see `client.py` for payload shape).
 
-Logs land in `logs/` with per-step YAML outputs. See `sample_logs/` for a captured run.
+Logs land in `logs/` with per-step YAML outputs. See [sample_logs/](sample_logs/) for a captured run.
 
 ## Sample artifacts
-- Plan produced by the LLM: `sample_logs/step_1_20251201103933.yaml`
-- Tool result snippet from MCP: `sample_logs/out_20251201103933_.log`
-- Structured findings per step: `sample_logs/step_1_step1_done_20251201103933.yaml`, `sample_logs/step_2_step1_done_20251201103933.yaml`
+- Plan produced by the LLM: [step](sample_logs/step_2_20251201103933.yaml)
+- Tool result snippet from MCP: [output log](sample_logs/out_20251201103933_.log)
+- Structured findings per step: [sample_logs/step_2_step1_done_20251201103933.yaml](sample_logs/step_2_step1_done_20251201103933.yaml), [sample_logs/step_2_step2_done_20251201103933.yaml](sample_logs/step_2_step2_done_20251201103933.yaml) etc
 
 Example finding (truncated):
 ```yaml
-title: Clarify 'reserve_max_layer' impact on device allocation
-severity: medium
-file: tests/test_modeling_utils.py
-why_it_matters: Tests assume reserve_max_layer preserves capacity; mismatch risks false failures.
-fix:
-  strategy: Update tests to explicitly specify the intended behavior.
+Executive Summary:
+- The current tests extensively cover the behavior of `infer_auto_device_map` with
+  various configurations, especially relating to `reserve_max_layer`.
+- The tests demonstrate that enabling or disabling `reserve_max_layer` influences
+  how modules are allocated, especially in tight memory constraints.
+- Minor inconsistencies exist between test expectations when toggling `reserve_max_layer`;
+  notably, assumptions about offloading and buffer placement.
+- No security issues identified; focus is on correctness and robustness of memory-based
+  device mapping.
+- The code primarily relies on size estimations, so the correctness heavily depends
+  on accurate `module_sizes` calculations.
+- "The tests\u2019 reliance on `try-except` for logs may mask potential issues, but\
+  \ overall testing fulfills coverage adequately."
+- The main risk is that future changes to `infer_auto_device_map` may invalidate assumptions,
+  so explicit documentation and strict adherence to expected behaviors are advised.
+Findings:
+  ai_generated_smell: true
+  category: maintainability
+  code_snippet: 'device_map = infer_auto_device_map(model, max_memory={0: 200, 1:
+    200}, reserve_max_layer=True)'
+  cwe: N/A
+  file: tests/test_modeling_utils.py
+  fix:
 ```
 
 ## Docker
