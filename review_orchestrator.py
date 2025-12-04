@@ -94,9 +94,14 @@ async def _process_file_review_async(file_path, diff, repo_url, pr_number, tool_
             context_label="plan",
         )
         
-        # Save plan log (optional, maybe skip file I/O in distributed setting or write to shared storage)
-        # For now, we skip writing to local file system to avoid clutter/race conditions on shared FS, 
-        # or we can write with unique names.
+        # Save plan log
+        safe_filename = file_path.replace("/", "_").replace("\\", "_")
+        logs_dir = Path("logs")
+        logs_dir.mkdir(exist_ok=True)
+        
+        plan_log_path = logs_dir / f"plan_{safe_filename}_{time_hash}.yaml"
+        with open(plan_log_path, "w", encoding="utf-8") as f:
+            yaml.dump(response_data, f)
         
         steps = response_data.get("steps", [])
         summary = response_data.get("summary", "")
@@ -125,6 +130,11 @@ async def _process_file_review_async(file_path, diff, repo_url, pr_number, tool_
                 repair_command=repair_llm_command,
                 context_label=f"step {name}",
             )
+            
+            # Save step log
+            step_log_path = logs_dir / f"step_{name}_{safe_filename}_{time_hash}.yaml"
+            with open(step_log_path, "w", encoding="utf-8") as f:
+                yaml.dump(step_data, f)
             
             step_execution_results.append({
                 "file_path": file_path,
