@@ -50,27 +50,20 @@ def load_prompt(**placeholders) -> str:
     return template
 
 @ray.remote
-def process_file_review(file_path: str, diff: str, repo_url: str, pr_number: int, tool_schemas_content: str, step_schema_content: str, time_hash: str) -> Dict[str, Any]:
+def process_file_review(file_path: str, diff: str, repo_url: str, pr_number: int, tool_schemas_content: str, step_schema_content: str, time_hash: str):
+    import asyncio
+    return asyncio.run(_process_file_review_async(file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash))
+
+async def _process_file_review_async(file_path: str, diff: str, repo_url: str, pr_number: int, tool_schemas_content: str, step_schema_content: str, time_hash: str):
     log.info(f"Starting review for {file_path}")
     
-    # Re-initialize clients inside the remote task to ensure thread safety/serialization
+    # Re-initialize clients inside the remote task
     api_key = os.getenv("OPENAI_API_KEY")
     openai_client = OpenAI(api_key=api_key, base_url="https://api.openai.com/v1")
     
     call_llm_command = CallLLM(openai_client, "Call the LLM", MODEL_NAME, COST_PER_TOKEN_INPUT, COST_PER_TOKEN_OUTPUT, 0.5)
     repair_llm_command = CallLLM(openai_client, "Repair YAML", FALLBACK_MODEL_NAME, COST_PER_TOKEN_INPUT, COST_PER_TOKEN_OUTPUT, FALLBACK_MAX_BUDGET)
     
-    # We need a new event loop for async operations inside the actor/task if we use async tools
-    # However, Ray tasks are synchronous by default unless async def. 
-    # But nmagents might be using async. Let's stick to the structure.
-    # The original code used `async with Client(...)`. We need to handle that.
-    # Since we are inside a ray task, we can run an async loop or just use synchronous versions if available.
-    # fastmcp Client is async.
-    
-    import asyncio
-    return asyncio.run(_process_file_review_async(file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash, call_llm_command, repair_llm_command))
-
-async def _process_file_review_async(file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash, call_llm_command, repair_llm_command):
     step_execution_results = []
     
     async with Client(AST_MCP_SERVER_URL) as ast_tool_client:
@@ -96,15 +89,16 @@ async def _process_file_review_async(file_path, diff, repo_url, pr_number, tool_
         
         # Save plan log
         safe_filename = file_path.replace("/", "_").replace("\\", "_")
-        logs_dir = Path("logs")
-        logs_dir.mkdir(exist_ok=True)
+        repo_name = repo_url.rstrip('/').split('/')[-1]
+        job_dir = f"{repo_name}_PR{pr_number}_{time_hash}"
+        logs_dir = Path("logs") / job_dir
+        logs_dir.mkdir(parents=True, exist_ok=True)
         
-        plan_log_path = logs_dir / f"plan_{safe_filename}_{time_hash}.yaml"
+        plan_log_path = logs_dir / f"plan_{safe_filename}.yaml"
         with open(plan_log_path, "w", encoding="utf-8") as f:
             yaml.dump(response_data, f)
         
         steps = response_data.get("steps", [])
-        summary = response_data.get("summary", "")
         
         for index, step in enumerate(steps, start=1):
             name = step.get("name", "<unnamed>")
@@ -119,31 +113,41 @@ async def _process_file_review_async(file_path, diff, repo_url, pr_number, tool_
                                                 diff_or_code_block=diff, tool_outputs=output)
                     step["tool_results"] = tool_result_context
             
-            step_context = load_prompt(repo_name=repo_url, brief_change_summary=step_description,
-                                       diff_or_code_block=diff, tool_outputs=step.get("tool_results", ""))
-            
-            step_response = call_llm_command.execute(step_context)
-            
-            step_data, _ = parse_json_response_with_repair(
-                response_text=step_response or "",
-                schema_hint="",
-                repair_command=repair_llm_command,
-                context_label=f"step {name}",
-            )
-            
-            # Save step log
-            step_log_path = logs_dir / f"step_{name}_{safe_filename}_{time_hash}.yaml"
-            with open(step_log_path, "w", encoding="utf-8") as f:
-                yaml.dump(step_data, f)
-            
-            step_execution_results.append({
-                "file_path": file_path,
-                "step_name": name,
-                "description": step_description,
-                "result": step_data,
-            })
-            
-    return {"file_path": file_path, "results": step_execution_results}
+            try:
+                step_context = load_prompt(repo_name=repo_url, brief_change_summary=step_description,
+                                           diff_or_code_block=diff, tool_outputs=step.get("tool_results", ""))
+                
+                step_response = call_llm_command.execute(step_context)
+                
+                step_data, _ = parse_json_response_with_repair(
+                    response_text=step_response or "",
+                    schema_hint="",
+                    repair_command=repair_llm_command,
+                    context_label=f"step {name}",
+                )
+                
+                # Save step log
+                step_log_path = logs_dir / f"step_{name}_{safe_filename}.yaml"
+                with open(step_log_path, "w", encoding="utf-8") as f:
+                    yaml.dump(step_data, f)
+                
+                step_execution_results.append({
+                    "step_name": name,
+                    "result": step_data
+                })
+                
+            except Exception as e:
+                log.error(f"Failed to execute step {name} for {file_path}: {e}")
+                step_execution_results.append({
+                    "step_name": name,
+                    "error": str(e)
+                })
+                break
+                
+    return {
+        "file_path": file_path,
+        "results": step_execution_results
+    }
 
 class CodeReviewOrchestrator:
     def __init__(self):
@@ -155,14 +159,13 @@ class CodeReviewOrchestrator:
         else:
             ray.init(ignore_reinit_error=True)
         
-    async def review_pr(self, repo_url: str, pr_number: int) -> str:
+    async def review_pr_stream(self, repo_url: str, pr_number: int):
         log.info(f"Orchestrating review for {repo_url} PR #{pr_number}")
         
         # Get diffs
         file_diffs = git_utils.get_pr_diff_url(repo_url, pr_number)
         
         # Get tool schemas (need to do this once)
-        # We need an async client here to get the list
         async with Client(AST_MCP_SERVER_URL) as ast_tool_client:
             ast_tool_list_command = ToolList(ast_tool_client, "List tools")
             tool_schemas_content = await ast_tool_list_command.execute(None)
@@ -174,21 +177,34 @@ class CodeReviewOrchestrator:
         time_hash = datetime.now().strftime("%Y%m%d%H%M%S")
         
         # Launch Ray tasks
-        futures = []
+        pending_futures = []
         for file_path, diff in file_diffs.items():
-            futures.append(process_file_review.remote(
+            pending_futures.append(process_file_review.remote(
                 file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash
             ))
             
-        # Wait for results
-        results = ray.get(futures)
-        
-        # Aggregate results
-        final_summary = "Code Review Summary:\n\n"
-        for res in results:
-            final_summary += f"File: {res['file_path']}\n"
-            for step in res['results']:
-                final_summary += f"- {step['step_name']}: {step['result']}\n" # Simplified summary
-            final_summary += "\n"
-            
-        return final_summary
+        # Process results as they complete
+        while pending_futures:
+            done_futures, pending_futures = ray.wait(pending_futures)
+            for future in done_futures:
+                try:
+                    result = await future
+                    
+                    # Format the result for this file
+                    file_summary = f"File: {result['file_path']}\n"
+                    for step in result['results']:
+                        if 'error' in step:
+                            file_summary += f"- {step['step_name']}: [Error] {step['error']}\n"
+                        else:
+                            file_summary += f"- {step['step_name']}: {step['result']}\n"
+                    
+                    yield {
+                        "file_path": result['file_path'],
+                        "comment": file_summary
+                    }
+                except Exception as e:
+                    log.error(f"Error processing result from ray: {e}")
+                    yield {
+                        "file_path": "system",
+                        "comment": f"Error: {str(e)}"
+                    }
