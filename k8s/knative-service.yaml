@@ -1,0 +1,36 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: code-review-agent
+  namespace: default
+  annotations:
+    # Prevent Knative from trying to resolve image tags from DockerHub
+    serving.knative.dev/skip-tag-resolution: "true"
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/min-scale: "1"
+        serving.knative.dev/skip-tag-resolution: "true"
+    spec:
+      containers:
+      - image: alexcpn/codereview-agent:latest  # <-- internal registry hostname
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 50051
+          name: h2c
+        readinessProbe:
+          tcpSocket:
+            port: 50051
+          periodSeconds: 2
+          initialDelaySeconds: 2
+        env:
+        - name: RAY_ADDRESS
+          value: "ray://ray-cluster-head-svc:10001"
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: openai-secret
+              key: api-key
+        - name: CODE_AST_MCP_SERVER_URL
+          value: "http://ast-mcp-server:7860/mcp/"

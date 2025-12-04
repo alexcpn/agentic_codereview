@@ -1,29 +1,19 @@
-FROM python:3.10-slim
+FROM python:3.10-slim-trixie
 
-FROM python:3.10-slim
-
-# Install system dependencies for building native extensions
-# Create non-root user
-RUN useradd -m -u 1000 user
-
-# Environment
-ENV PATH="/home/user/.local/bin:$PATH"
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
-RUN chown -R user:1000 /app
-# Install pip and uv
-RUN pip install --upgrade pip && pip install uv
 
-# Copy project files
-COPY --chown=user:1000 . /app
+# Install dependencies first (cached unless lockfile changes)
+COPY pyproject.toml uv.lock /app/
+RUN uv sync --frozen --no-install-project
 
-# Switch to non-root user
-USER user
-
-# Install dependencies
-RUN uv sync
+# Then copy the rest of the code
+COPY . /app
+RUN uv sync --frozen
 
 # Run the server
-CMD ["uv", "run", "uvicorn", "code_review_agent:app", "--host", "0.0.0.0", "--port", "7860"]
+# Run the server
+CMD ["uv", "run", "python", "agent_interface.py"]
 
 # Build the docker
 # docker build -t codereview-agent .

@@ -1,1 +1,4 @@
 .env
+protos/agent_pb2_grpc.py
+protos/agent_pb2.py
+protos/__pycache__/*

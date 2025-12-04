@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package agent;
+
+service CodeReviewAgent {
+  rpc ReviewPR (ReviewRequest) returns (ReviewResponse) {}
+}
+
+message ReviewRequest {
+  string repo_url = 1;
+  int32 pr_number = 2;
+}
+
+message ReviewResponse {
+  string status = 1;
+  string review_comment = 2;
+}

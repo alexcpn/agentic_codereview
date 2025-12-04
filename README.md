@@ -134,3 +134,50 @@ docker run -it --rm -p 7860:7860 codereview-agent
 - [codereview_mcp_server](https://github.com/alexcpn/codereview_mcp_server)
 - [nmagents (noagent-ai)](https://github.com/alexcpn/noagent-ai)
 - [uv package manager](https://github.com/astral-sh/uv)
+
+
+# Running Locally with Ray (Pure Ray)
+
+This is the simplest way to run the agent without Kubernetes complexity.
+
+## 1. Install Dependencies
+Make sure you are in the project directory:
+```bash
+pip install -e .
+```
+
+## 2. Start Ray
+Start a local Ray cluster instance:
+```bash
+uv run ray start --head
+```
+*Note: This starts Ray on your local machine. You can view the dashboard at http://127.0.0.1:8265*
+
+## Run the code review mcp server
+```bash
+git clone https://github.com/alexcpn/codereview_mcp_server.git
+cd codereview_mcp_server
+uv run http_server.py
+```
+
+## 3. Run the Agent Service
+Set your OpenAI API key and start the gRPC server:
+```bash
+export OPENAI_API_KEY=sk-YOUR_KEY
+export AST_MCP_SERVER_URL=http://127.0.0.1:7860/mcp/ 
+export RAY_ADDRESS="auto"  # Connects to the local Ray instance
+uv run agent_interface.py
+```
+
+## 4. Run the Client
+In a separate terminal, run the test client:
+```bash
+python test_client.py
+```
+
+## 5. Stop Ray
+When you are done:
+```bash
+ray stop
+```
+
