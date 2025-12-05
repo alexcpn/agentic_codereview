@@ -35,9 +35,7 @@ Also this will run with any OpenAI API comptatible model; Like ollam (with Micro
 
 Note that these small models are really not that good with complex tasks like this.
 
-
 ### Core flow (excerpt from `review_orchestrator.py`)
-
 
 ```python
 file_diffs = git_utils.get_pr_diff_url(repo_url, pr_number)
@@ -110,8 +108,11 @@ RAY_ADDRESS="auto"
 ```
 uv run web_server.py 
 ```
-This will start the web server on port 8000
+This will start the web server on http://0.0.0.0:8000/
 
+You will get a UI to trigger the review and see triggered reviews and steps
+
+![webpage](https://i.postimg.cc/vB2v53pk/image.png)
 ---
 
 ## References
