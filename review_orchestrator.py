@@ -214,7 +214,16 @@ class CodeReviewOrchestrator:
         log.info(f"Orchestrating review for {repo_url} PR #{pr_number}")
         
         # Get diffs
-        file_diffs = git_utils.get_pr_diff_url(repo_url, pr_number)
+        try:
+            file_diffs = git_utils.get_pr_diff_url(repo_url, pr_number)
+        except Exception as e:
+            log.error(f"Failed to get diffs: {e}")
+            yield {
+                "type": "error",
+                "file_path": "system",
+                "content": json.dumps({"error": f"Failed to get diffs: {str(e)}"})
+            }
+            return
         
         # Get tool schemas (need to do this once)
         async with Client(AST_MCP_SERVER_URL) as ast_tool_client:
@@ -244,7 +253,9 @@ class CodeReviewOrchestrator:
         
         # Process results as they complete
         while pending_futures:
-            done_futures, pending_futures = ray.wait(pending_futures)
+            # Run ray.wait in a separate thread to avoid blocking the asyncio event loop
+            import asyncio
+            done_futures, pending_futures = await asyncio.to_thread(ray.wait, pending_futures)
             for future in done_futures:
                 try:
                     result = await future

@@ -76,16 +76,10 @@
         <div class="p-4 border-b">
             <form id="reviewForm" class="space-y-3">
                 <div>
-                    <label for="repoUrl" class="block text-xs font-medium text-gray-700">Repo URL</label>
-                    <input type="text" id="repoUrl" name="repoUrl" required
+                    <label for="prUrl" class="block text-xs font-medium text-gray-700">Github PR URL</label>
+                    <input type="text" id="prUrl" name="prUrl" required
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs p-2 border"
-                        placeholder="https://github.com/owner/repo">
-                </div>
-                <div>
-                    <label for="prNumber" class="block text-xs font-medium text-gray-700">PR #</label>
-                    <input type="text" id="prNumber" name="prNumber" required
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs p-2 border"
-                        placeholder="123">
+                        placeholder="https://github.com/owner/repo/pull/123">
                 </div>
                 <div class="flex space-x-2">
                     <button type="button" id="fetchHistoryBtn"
@@ -213,9 +207,19 @@
                     if (repoName && prNumber) {
                         currentRepo = repoName;
                         currentPr = prNumber;
-                        // Also update inputs to reflect current selection
-                        document.getElementById('repoUrl').value = `https://github.com/.../${repoName}`; // Approximate
-                        document.getElementById('prNumber').value = prNumber;
+                        // Only update input if we have a valid URL structure, otherwise keep it or clear it?
+                        // Since we don't have the full owner/repo from the run history (only repo name),
+                        // we can't reconstruct the full URL accurately.
+                        // Better to NOT update the input with a broken URL.
+                        // Or try to use the saved one if it matches.
+
+                        const savedPrUrl = localStorage.getItem('lastPrUrl');
+                        if (savedPrUrl && savedPrUrl.includes(repoName) && savedPrUrl.includes(prNumber)) {
+                            document.getElementById('prUrl').value = savedPrUrl;
+                        } else {
+                            // If we can't reconstruct it, maybe just show a placeholder or don't touch it
+                            // document.getElementById('prUrl').value = `https://github.com/.../${repoName}/pull/${prNumber}`;
+                        }
                     }
                     loadRun(timeHash);
                 };
@@ -444,15 +448,38 @@
             }
         }
 
+        function parsePrUrl(url) {
+            try {
+                // Expected format: https://github.com/owner/repo/pull/123
+                const regex = /github\.com\/([^\/]+\/[^\/]+)\/pull\/(\d+)/;
+                const match = url.match(regex);
+                if (match) {
+                    return {
+                        repoUrl: `https://github.com/${match[1]}`,
+                        prNumber: match[2]
+                    };
+                }
+            } catch (e) {
+                console.error("Error parsing URL", e);
+            }
+            return null;
+        }
+
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const repoUrl = document.getElementById('repoUrl').value;
-            const prNumber = document.getElementById('prNumber').value;
+            const prUrl = document.getElementById('prUrl').value;
+            const parsed = parsePrUrl(prUrl);
+
+            if (!parsed) {
+                alert('Invalid GitHub PR URL. Expected format: https://github.com/owner/repo/pull/123');
+                return;
+            }
+
+            const { repoUrl, prNumber } = parsed;
 
             // Save to localStorage
-            localStorage.setItem('lastRepoUrl', repoUrl);
-            localStorage.setItem('lastPrNumber', prNumber);
+            localStorage.setItem('lastPrUrl', prUrl);
 
             // Refresh runs list just in case
             await loadRuns(repoUrl, prNumber);
@@ -495,11 +522,12 @@
 
         // Load saved values on startup
         window.addEventListener('DOMContentLoaded', () => {
-            const savedRepoUrl = localStorage.getItem('lastRepoUrl');
-            const savedPrNumber = localStorage.getItem('lastPrNumber');
+            const savedPrUrl = localStorage.getItem('lastPrUrl');
+            const prUrlInput = document.getElementById('prUrl');
 
-            if (savedRepoUrl) repoUrlInput.value = savedRepoUrl;
-            if (savedPrNumber) prNumberInput.value = savedPrNumber;
+            if (savedPrUrl) {
+                prUrlInput.value = savedPrUrl;
+            }
 
             // Always fetch all runs on startup
             fetchAllRuns();

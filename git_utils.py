@@ -15,12 +15,8 @@ def get_pr_diff_url(repo_url, pr_number):
     response = requests.get(pr_diff_url,verify=False)
 
     if response.status_code != 200:
-        log.info(f"Failed to fetch diff: {response.status_code}")
-        exit()
-
-    if response.status_code != 200:
-        log.info(f"Failed to fetch diff: {response.status_code}")
-        exit()
+        log.error(f"Failed to fetch diff: {response.status_code}")
+        raise ValueError(f"Failed to fetch diff: {response.status_code}")
 
     diff_text = response.text
     file_diffs = defaultdict(str)
