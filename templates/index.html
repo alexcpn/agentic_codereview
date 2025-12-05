@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Review Agent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .step-content {
+            display: none;
+        }
+
+        .step-content.open {
+            display: block;
+        }
+
+        /* Custom scrollbar for sidebar */
+        .sidebar-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sidebar-scroll::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .sidebar-scroll::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 3px;
+        }
+
+        .sidebar-scroll::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 h-screen flex overflow-hidden">
+
+    <!-- Sidebar -->
+    <div class="w-64 bg-white shadow-lg flex flex-col h-full">
+        <div class="p-4 border-b">
+            <h1 class="text-xl font-bold text-gray-800">Code Review</h1>
+        </div>
+
+        <div class="p-4 border-b">
+            <form id="reviewForm" class="space-y-3">
+                <div>
+                    <label for="repoUrl" class="block text-xs font-medium text-gray-700">Repo URL</label>
+                    <input type="text" id="repoUrl" name="repoUrl" required
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs p-2 border"
+                        placeholder="https://github.com/owner/repo">
+                </div>
+                <div>
+                    <label for="prNumber" class="block text-xs font-medium text-gray-700">PR #</label>
+                    <input type="number" id="prNumber" name="prNumber" required
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs p-2 border"
+                        placeholder="123">
+                </div>
+                <button type="submit"
+                    class="w-full justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Trigger Review
+                </button>
+            </form>
+        </div>
+
+        <div class="flex-1 overflow-y-auto sidebar-scroll p-4">
+            <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">History</h2>
+            <div id="runsList" class="space-y-2">
+                <!-- Runs will be listed here -->
+                <div class="text-xs text-gray-400 text-center italic">No runs found</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col h-full overflow-hidden">
+        <header class="bg-white shadow-sm p-4 flex justify-between items-center z-10">
+            <h2 id="currentRunTitle" class="text-lg font-medium text-gray-900">Select a run or trigger a new one</h2>
+            <span id="connectionStatus"
+                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                Disconnected
+            </span>
+        </header>
+
+        <main class="flex-1 overflow-y-auto p-6 space-y-6" id="mainContent">
+            <!-- Plan Section -->
+            <div id="planSection" class="hidden">
+                <div class="bg-white rounded-lg shadow border-l-4 border-blue-500">
+                    <div class="p-4 border-b border-gray-100">
+                        <h3 class="text-lg font-semibold text-blue-700">Review Plan</h3>
+                    </div>
+                    <div class="p-4">
+                        <pre id="planContent"
+                            class="bg-gray-50 p-4 rounded text-sm overflow-x-auto font-mono text-gray-700"></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Steps Section -->
+            <div id="stepsSection" class="space-y-4">
+                <!-- Steps will be appended here -->
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const form = document.getElementById('reviewForm');
+        const runsList = document.getElementById('runsList');
+        const mainContent = document.getElementById('mainContent');
+        const planSection = document.getElementById('planSection');
+        const planContent = document.getElementById('planContent');
+        const stepsSection = document.getElementById('stepsSection');
+        const currentRunTitle = document.getElementById('currentRunTitle');
+        const connectionStatus = document.getElementById('connectionStatus');
+
+        let eventSource = null;
+        let currentRepo = '';
+        let currentPr = '';
+
+        // Load runs on input blur or submit
+        async function loadRuns(repoUrl, prNumber) {
+            if (!repoUrl || !prNumber) return;
+
+            const repoName = repoUrl.replace(/\/$/, '').split('/').pop();
+            currentRepo = repoName;
+            currentPr = prNumber;
+
+            try {
+                const response = await fetch(`/runs/${repoName}/${prNumber}`);
+                const data = await response.json();
+                renderRuns(data.runs);
+            } catch (error) {
+                console.error('Failed to load runs:', error);
+            }
+        }
+
+        function renderRuns(runs) {
+            runsList.innerHTML = '';
+            if (runs.length === 0) {
+                runsList.innerHTML = '<div class="text-xs text-gray-400 text-center italic">No runs found</div>';
+                return;
+            }
+
+            runs.forEach(run => {
+                const div = document.createElement('div');
+                // Format timestamp: YYYYMMDDHHMMSS -> Local Date Time
+                const year = run.substring(0, 4);
+                const month = run.substring(4, 6);
+                const day = run.substring(6, 8);
+                const hour = run.substring(8, 10);
+                const minute = run.substring(10, 12);
+                const second = run.substring(12, 14);
+                const date = new Date(year, month - 1, day, hour, minute, second);
+
+                div.className = 'p-3 bg-white rounded border border-gray-200 hover:border-indigo-500 cursor-pointer transition-colors shadow-sm';
+                div.innerHTML = `
+                    <div class="text-sm font-medium text-gray-900">Run ${run}</div>
+                    <div class="text-xs text-gray-500">${date.toLocaleString()}</div>
+                `;
+                div.onclick = () => loadRun(run);
+                runsList.appendChild(div);
+            });
+        }
+
+        function loadRun(timeHash) {
+            // Update UI
+            currentRunTitle.textContent = `Viewing Run: ${timeHash}`;
+            planSection.classList.add('hidden');
+            planContent.textContent = '';
+            stepsSection.innerHTML = '';
+
+            // Close existing stream
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            // Start new stream
+            const streamUrl = `/stream/${currentRepo}/${currentPr}/${timeHash}`;
+            connectStream(streamUrl);
+        }
+
+        function connectStream(url) {
+            connectionStatus.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800';
+            connectionStatus.textContent = 'Connecting...';
+
+            eventSource = new EventSource(url);
+
+            eventSource.onopen = () => {
+                connectionStatus.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800';
+                connectionStatus.textContent = 'Live';
+            };
+
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                renderEvent(data);
+            };
+
+            eventSource.onerror = (error) => {
+                console.error('EventSource failed:', error);
+                connectionStatus.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800';
+                connectionStatus.textContent = 'Disconnected';
+                // eventSource.close(); // Don't close immediately, it might reconnect
+            };
+        }
+
+        function renderEvent(data) {
+            const type = data.type;
+            let content = {};
+            try {
+                content = JSON.parse(data.content || '{}');
+            } catch (e) {
+                content = { raw: data.content };
+            }
+
+            if (type === 'plan') {
+                planSection.classList.remove('hidden');
+                planContent.textContent = JSON.stringify(content, null, 2);
+            } else if (type === 'step') {
+                const stepName = data.step_name;
+                const stepId = `step-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                const div = document.createElement('div');
+                div.className = 'bg-white rounded-lg shadow border-l-4 border-green-500 overflow-hidden';
+                div.innerHTML = `
+                    <div class="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors" onclick="toggleStep('${stepId}')">
+                        <div class="flex items-center space-x-3">
+                            <span class="flex-shrink-0 h-6 w-6 rounded-full bg-green-100 flex items-center justify-center text-green-600">✓</span>
+                            <h3 class="text-md font-medium text-gray-900">${stepName}</h3>
+                        </div>
+                        <span class="text-gray-400 transform transition-transform duration-200" id="icon-${stepId}">▼</span>
+                    </div>
+                    <div id="${stepId}" class="step-content border-t border-gray-100 bg-gray-50">
+                        <div class="p-4">
+                            <pre class="text-xs overflow-x-auto font-mono text-gray-700">${JSON.stringify(content, null, 2)}</pre>
+                        </div>
+                    </div>
+                `;
+                stepsSection.appendChild(div);
+            }
+        }
+
+        window.toggleStep = function (id) {
+            const el = document.getElementById(id);
+            const icon = document.getElementById(`icon-${id}`);
+            el.classList.toggle('open');
+            if (el.classList.contains('open')) {
+                icon.style.transform = 'rotate(180deg)';
+            } else {
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const repoUrl = document.getElementById('repoUrl').value;
+            const prNumber = document.getElementById('prNumber').value;
+
+            // Refresh runs list just in case
+            await loadRuns(repoUrl, prNumber);
+
+            try {
+                const response = await fetch('/review', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ repo_url: repoUrl, pr_number: parseInt(prNumber) }),
+                });
+
+                const data = await response.json();
+
+                // Refresh runs list to show the new one
+                await loadRuns(repoUrl, prNumber);
+
+                // Automatically select the new run
+                loadRun(data.time_hash);
+
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to trigger review');
+            }
+        });
+
+        // Auto-load runs if fields are pre-filled (optional)
+        const repoUrlInput = document.getElementById('repoUrl');
+        const prNumberInput = document.getElementById('prNumber');
+
+        [repoUrlInput, prNumberInput].forEach(input => {
+            input.addEventListener('blur', () => {
+                loadRuns(repoUrlInput.value, prNumberInput.value);
+            });
+        });
+
+    </script>
+</body>
+
+</html>

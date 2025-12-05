@@ -12,15 +12,28 @@ def main():
     parser.add_argument("--repo-url", required=True, help="Full GitHub repository URL.")
     parser.add_argument("--pr-number", type=int, required=True, help="Pull request number.")
     parser.add_argument("--redis-host", default=os.getenv("REDIS_HOST", "localhost"), help="Redis host.")
-    parser.add_argument("--redis-port", type=int, default=int(os.getenv("REDIS_PORT", 6379)), help="Redis port.")
+    parser.add_argument("--redis-port", type=int, default=int(os.getenv("REDIS_PORT", 6380)), help="Redis port.")
+    parser.add_argument("--time-hash", help="Specific run time hash.")
     args = parser.parse_args()
 
     repo_name = args.repo_url.rstrip('/').split('/')[-1]
-    stream_key = f"review:stream:{repo_name}:{args.pr_number}"
+    r = redis.Redis(host=args.redis_host, port=args.redis_port, db=0, decode_responses=True)
+    
+    time_hash = args.time_hash
+    if not time_hash:
+        runs_key = f"review:runs:{repo_name}:{args.pr_number}"
+        runs = r.smembers(runs_key)
+        if not runs:
+            print(f"No runs found for {repo_name} PR {args.pr_number}")
+            return
+        time_hash = sorted(list(runs), reverse=True)[0]
+        print(f"No time hash provided, using latest run: {time_hash}")
+
+    stream_key = f"review:stream:{repo_name}:{args.pr_number}:{time_hash}"
 
     print(f"Listening for events on {stream_key} at {args.redis_host}:{args.redis_port}...")
     
-    r = redis.Redis(host=args.redis_host, port=args.redis_port, db=0, decode_responses=True)
+    # r is already initialized above
     last_id = "$"
 
     try:

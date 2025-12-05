@@ -52,18 +52,25 @@ def load_prompt(**placeholders) -> str:
     return template
 
 @ray.remote
-def process_file_review(file_path: str, diff: str, repo_url: str, pr_number: int, tool_schemas_content: str, step_schema_content: str, time_hash: str):
+def process_file_review(file_path: str, diff: str, repo_url: str, pr_number: int, tool_schemas_content: str, step_schema_content: str, time_hash: str, redis_host: str, redis_port: int):
     import asyncio
-    return asyncio.run(_process_file_review_async(file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash))
+    return asyncio.run(_process_file_review_async(file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash, redis_host, redis_port))
 
-async def _process_file_review_async(file_path: str, diff: str, repo_url: str, pr_number: int, tool_schemas_content: str, step_schema_content: str, time_hash: str):
+async def _process_file_review_async(file_path: str, diff: str, repo_url: str, pr_number: int, tool_schemas_content: str, step_schema_content: str, time_hash: str, redis_host: str, redis_port: int):
     log.info(f"Starting review for {file_path}")
     
     # Initialize Redis client
-    redis_host = os.getenv("REDIS_HOST", "localhost")
-    redis_port = int(os.getenv("REDIS_PORT"))
+    # redis_host and redis_port are passed from the orchestrator
     redis_client = redis.Redis(host=redis_host, port=redis_port, db=0)
-    stream_key = f"review:stream:{repo_url.rstrip('/').split('/')[-1]}:{pr_number}"
+    repo_name = repo_url.rstrip('/').split('/')[-1]
+    stream_key = f"review:stream:{repo_name}:{pr_number}:{time_hash}"
+    runs_key = f"review:runs:{repo_name}:{pr_number}"
+    
+    # Add this run to the history
+    try:
+        redis_client.sadd(runs_key, time_hash)
+    except Exception as e:
+        log.error(f"Failed to add run to history: {e}")
     
     # Re-initialize clients inside the remote task
     api_key = os.getenv("OPENAI_API_KEY")
@@ -188,7 +195,7 @@ class CodeReviewOrchestrator:
         else:
             ray.init(ignore_reinit_error=True)
         
-    async def review_pr_stream(self, repo_url: str, pr_number: int):
+    async def review_pr_stream(self, repo_url: str, pr_number: int, time_hash: str = None):
         log.info(f"Orchestrating review for {repo_url} PR #{pr_number}")
         
         # Get diffs
@@ -203,13 +210,18 @@ class CodeReviewOrchestrator:
         with open(sample_step_schema_file, "r", encoding="utf-8") as f:
             step_schema_content = f.read()
             
-        time_hash = datetime.now().strftime("%Y%m%d%H%M%S")
+        if not time_hash:
+            time_hash = datetime.now().strftime("%Y%m%d%H%M%S")
         
+        # Redis config to pass to workers
+        redis_host = os.getenv("REDIS_HOST", "localhost")
+        redis_port = int(os.getenv("REDIS_PORT", 6380))
+
         # Launch Ray tasks
         pending_futures = []
         for file_path, diff in file_diffs.items():
             pending_futures.append(process_file_review.remote(
-                file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash
+                file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash, redis_host, redis_port
             ))
             
         # Collect all reviews for final summary
