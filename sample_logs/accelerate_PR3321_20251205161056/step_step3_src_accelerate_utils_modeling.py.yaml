@@ -1,0 +1,124 @@
+ai_generated_smell: true
+breaking_change_risk: low
+category: maintainability
+code_snippet: "if reserve_max_layer:\n    max_layer_size, max_layer_names = get_max_layer_size(...)\n\
+  else:\n    max_layer_size, max_layer_names = 0, []\n...\nif devices[current_device]\
+  \ in main_devices and reserve_max_layer:\n    current_max_size -= max_layer_size\n\
+  ...\nif reserve_max_layer:\n    max_layer_size, max_layer_names = get_max_layer_size(...)\n"
+cwe: N/A
+file: src/accelerate/utils/modeling.py
+fix:
+  patch: 'diff --git a/src/accelerate/utils/modeling.py b/src/accelerate/utils/modeling.py
+
+    index dccac1a8c5a..d4c16e45649 100644
+
+    --- a/src/accelerate/utils/modeling.py
+
+    +++ b/src/accelerate/utils/modeling.py
+
+    @@ -1295,7 +1295,11 @@ def infer_auto_device_map(
+
+    -    reserve_max_layer: bool = False,
+
+    +    reserve_max_layer: bool = False,
+
+    ...
+
+    @@ -1363,21 +1367,24 @@ def infer_auto_device_map(
+
+    -    if reserve_max_layer:
+
+    -        max_layer_size, max_layer_names = get_max_layer_size(...)
+
+    -    else:
+
+    -        max_layer_size, max_layer_names = 0, []
+
+    +    if reserve_max_layer:
+
+    +        max_layer_size, max_layer_names = get_max_layer_size(...)
+
+    +    else:
+
+    +        max_layer_size, max_layer_names = 0, []
+
+    ...
+
+    @@ -1406,8 +1413,8 @@ def infer_auto_device_map(
+
+    -        if devices[current_device] in main_devices:
+
+    +        if devices[current_device] in main_devices and reserve_max_layer:
+
+    ...
+
+    @@ -1486,11 +1493,12 @@ def infer_auto_device_map(
+
+    -                max_layer_size, max_layer_names = get_max_layer_size(...)
+
+    +                if reserve_max_layer:
+
+    +                    max_layer_size, max_layer_names = get_max_layer_size(...)
+
+    ...
+
+    @@ -1526,11 +1534,12 @@ def infer_auto_device_map(
+
+    -                max_layer_size, max_layer_names = get_max_layer_size(...)
+
+    +                if reserve_max_layer:
+
+    +                    max_layer_size, max_layer_names = get_max_layer_size(...)
+
+    ...
+
+    @@ -1562,6 +1571,33 @@ def infer_auto_device_map(
+
+    -        if not reserve_max_layer and device_map:
+
+    +        if not reserve_max_layer and device_map:
+
+    +            # re-invoke with reserve_max_layer=True if offloading layers detected
+
+    +            ...
+
+    +            return infer_auto_device_map(
+
+    +                model, max_memory, no_split_module_classes, reserve_max_layer=True,
+    ...
+
+    +            )
+
+    '
+  strategy: Add a `reserve_max_layer` argument with default False to control max layer
+    size reservation.
+impact: 'Provides optional pre-allocation of maximum layer memory, which can lead
+  to more efficient memory usage on multi-GPU setups.
+
+  Falling back and offloading logic may be less accurate if `reserve_max_layer` is
+  disabled, potentially causing suboptimal memory management.
+
+  '
+lines: 1295-1574
+migration_notes: Ensure that callers of this function are aware of `reserve_max_layer`
+  parameter.
+owasp_top10: N/A
+references:
+- https://github.com/huggingface/accelerate/blob/main/src/accelerate/utils/modeling.py
+root_cause: 'The original implementation dynamically adapts max layer size only when
+  `reserve_max_layer` was implicitly assumed True.
+
+  Introducing a parameter allows explicit control over this behavior, enabling better
+  memory optimization policies.
+
+  '
+severity: medium
+tests:
+  cases:
+  - Default disable (reserve_max_layer=False) for backward compatibility.
+  - Enable reserve_max_layer=True to test improved memory reservation.
+  - Test offloading detection and recursive calls with offloaded layers.
+  - 'Edge case: model with no layers or trivial layers.'
+  new_or_changed:
+  - test_memory_reservation_behavior
+title: Conditional max_layer_size reservation in infer_auto_device_map

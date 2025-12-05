@@ -1,0 +1,70 @@
+steps:
+- description: 'Retrieve the function context for ''infer_auto_device_map'' in the
+    repository to understand its current implementation and identify where the new
+    parameter ''reserve_max_layer'' has been added. Use ''get_function_context_for_project_mcp''
+    tool with parameters: github_repo=''https://github.com/huggingface/accelerate'',
+    function_name=''infer_auto_device_map''.'
+  name: step1
+  tool_results: Results will include the full function implementation, highlighting
+    the new 'reserve_max_layer' parameter and related code modifications to understand
+    its placement and intended behavior.
+  tools:
+  - function: get_function_context_for_project_mcp
+    name: get_function_context_for_project_mcp
+    parameters:
+      function_name: infer_auto_device_map
+      github_repo: https://github.com/huggingface/accelerate
+- description: Identify the specific code segments where 'reserve_max_layer' influences
+    the logic, such as initializations, conditionals, and recursive calls within 'infer_auto_device_map'.
+    Analyze how the parameter alters the existing memory management and layer reservation
+    logic, especially regarding 'max_layer_size' calculation and device memory assignment.
+  name: step2
+  tool_results: Observation of code modifications related to 'reserve_max_layer',
+    especially the conditional checks and recursive call with 'reserve_max_layer=True',
+    to understand the intended functionality.
+  tools: []
+- description: Review related functions such as 'get_max_layer_size' to understand
+    its role in determining layer sizes and how 'reserve_max_layer' changes its invocation
+    and behavior. Check if this function's output impacts memory reservation and device
+    assignment logic.
+  name: step3
+  tool_results: Details of 'get_max_layer_size' will clarify how layer sizes are computed
+    and how the new parameter affects its use, ensuring the logic aligns with the
+    intended memory reservation strategy.
+  tools:
+  - function: get_function_context_for_project_mcp
+    name: get_function_context_for_project_mcp
+    parameters:
+      function_name: get_max_layer_size
+      github_repo: https://github.com/huggingface/accelerate
+- description: Assess the overall impact of adding 'reserve_max_layer' by reviewing
+    the conditions under which it is used, particularly in memory allocation and module
+    treatment loops. Verify whether the recursive call effectively re-evaluates layer
+    sizes to optimize device memory when offloading is involved.
+  name: step4
+  tool_results: Analysis of control flow and memory management changes, confirming
+    whether the recursive call with 'reserve_max_layer=True' updates device mapping
+    to accommodate offloaded layers correctly.
+  tools: []
+- description: Check for unit tests, documentation, or comments related to 'reserve_max_layer'
+    to verify if additional tests are provided or needed. Review the implications
+    of the new parameter on existing functionality to identify potential edge cases
+    or regressions.
+  name: step5
+  tool_results: Understanding of testing coverage and documentation to ensure the
+    feature is well-described and validated, or to recommend enhancements if gaps
+    are found.
+  tools: []
+- description: Summarize findings on how 'reserve_max_layer' modifies memory reservation,
+    layer size calculations, and overall device mapping logic. Confirm whether the
+    change improves handling of offloaded layers and memory efficiency, and suggest
+    any further review or testing if necessary.
+  name: step6
+  tool_results: A comprehensive understanding that guides final review comments, validation
+    steps, and potential recommendations for further improvements.
+  tools: []
+summary: This review plan outlines the steps to analyze the code changes related to
+  the 'reserve_max_layer' parameter in the 'infer_auto_device_map' function. The goal
+  is to understand the modifications, their impact, and ensure the new feature functions
+  correctly without breaking existing behavior.
+version: 1

@@ -1,0 +1,16 @@
+ai_generated_smell: true
+category: maintainability
+code_snippet: 'if reserve_max_layer: ... get_max_layer_size(...)'
+cwe: N/A
+file: src/accelerate/utils/modeling.py
+fix:
+  patch: ''
+  strategy: Add conditional re-computation of max layer size when reserve_max_layer=True
+lines: 1295-1574
+owasp_top10: N/A
+root_cause: Previous implementation only initialized max_layer_size once, which could
+  lead to suboptimal memory plans in offloading scenarios.
+severity: medium
+title: Conditional re-evaluation of max layer size with reserve_max_layer
+why_it_matters: Ensures device memory is accurately allocated considering offloaded
+  layers, preventing memory overflow or under-utilization.

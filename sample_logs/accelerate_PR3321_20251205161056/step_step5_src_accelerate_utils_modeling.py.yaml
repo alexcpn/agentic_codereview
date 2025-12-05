@@ -1,0 +1,32 @@
+ai_generated_smell: true
+breaking_change_risk: low
+category: reliability
+code_snippet: 'if not reserve_max_layer and device_map: ... return infer_auto_device_map(...)'
+cwe: N/A
+file: src/accelerate/utils/modeling.py
+fix:
+  patch: "if not reserve_max_layer and device_map and not hasattr(infer_auto_device_map,\
+    \ \"_recursion_counter\"):\n    setattr(infer_auto_device_map, \"_recursion_counter\"\
+    , 0)\nif hasattr(infer_auto_device_map, \"_recursion_counter\"):\n    infer_auto_device_map._recursion_counter\
+    \ += 1\n    if infer_auto_device_map._recursion_counter > 3:\n        delattr(infer_auto_device_map,\
+    \ \"_recursion_counter\")\n        return device_map\n    # existing fallback\
+    \ call\n    ...\nfollow_up:\n  - Refactor fallback to include explicit max recursion\
+    \ depth or a guard variable."
+  strategy: Add recursion depth guard or in-progress flags to avoid infinite recursion
+lines: 1562-1571
+migration_notes: ''
+owasp_top10: N/A
+references:
+- https://en.wikipedia.org/wiki/Recursion_guard
+root_cause: Recursive fallback mechanism triggered without recursion depth safeguard
+  or exit condition.
+severity: high
+tests:
+  cases:
+  - Fallback invoked when small model with offloading
+  - No fallback needed for fully on-device models
+  new_or_changed:
+  - test_infer_auto_device_map_reserve_max_layer_fallback
+title: Potential Recursive Loop in fallback logic
+why_it_matters: Potential infinite recursion leading to stack overflow; unpredictable
+  runtime behavior

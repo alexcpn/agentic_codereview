@@ -1,0 +1,73 @@
+steps:
+- description: Retrieve detailed context for the function 'infer_auto_device_map'
+    from the repository 'https://github.com/huggingface/accelerate' to understand
+    its implementation, parameters, expected behavior, and dependencies. Use the 'get_function_context_for_project_mcp'
+    tool specifying the function name as 'infer_auto_device_map' and the provided
+    repo URL.
+  name: step1
+  tool_results: ''
+  tools:
+  - function: get_function_context_for_project_mcp
+    name: ast_mcp_tools
+    parameters:
+      function_name: infer_auto_device_map
+      github_repo: https://github.com/huggingface/accelerate
+- description: Analyze the current test file 'tests/test_modeling_utils.py' to identify
+    the coverage of the 'infer_auto_device_map' function, including existing tests,
+    edge cases, and parameter variations. Review the test cases that involve 'reserve_max_layer'
+    parameter to understand the expected behavior and coverage scope.
+  name: step2
+  tool_results: ''
+  tools:
+  - function: search_codebase_mcp
+    name: search_codebase_mcp
+    parameters:
+      file_patterns: null
+      github_repo: https://github.com/huggingface/accelerate
+      ignore_names: null
+      max_results: 100
+      term: infer_auto_device_map
+- description: Review the specific test cases that involve the 'reserve_max_layer'
+    parameter, especially those added towards the end of the test file. Cross-reference
+    these with the expected behavior described in the function's documentation or
+    implementation to ensure comprehensive coverage and correctness validation.
+  name: step3
+  tool_results: ''
+  tools:
+  - function: get_function_context_for_project_mcp
+    name: get_function_context_for_project_mcp
+    parameters:
+      function_name: test_infer_auto_device_map_reserve_max_layer
+      github_repo: https://github.com/huggingface/accelerate
+- description: Compare the logic and parameter handling of 'infer_auto_device_map'
+    with the test cases to ensure that the tests cover different configurations such
+    as varying 'max_memory' values, multiple devices, offloaded modules, and the 'reserve_max_layer'
+    flag. Check for potential missing edge cases or scenarios not explicitly tested.
+  name: step4
+  tool_results: ''
+  tools:
+  - function: get_function_context_for_project_mcp
+    name: get_function_context_for_project_mcp
+    parameters:
+      function_name: infer_auto_device_map
+      github_repo: https://github.com/huggingface/accelerate
+- description: Assess the overall consistency, style, and potential improvements in
+    the test cases, such as parameter naming, comments, and assertions. Verify that
+    the tests aim to validate both typical and edge case behaviors, especially with
+    complex scenarios like tied weights, multiple offloading, and buffer checks.
+  name: step5
+  tool_results: ''
+  tools:
+  - function: search_codebase_mcp
+    name: search_codebase_mcp
+    parameters:
+      file_patterns: null
+      github_repo: https://github.com/huggingface/accelerate
+      ignore_names: null
+      max_results: 100
+      term: infer_auto_device_map
+summary: The review plan outlines a series of systematic steps to thoroughly analyze
+  the code changes within the PR, focusing on understanding the context, evaluating
+  the implementations and test coverage, verifying the correctness of modifications,
+  and ensuring consistency with overall project standards.
+version: 1

@@ -1,0 +1,2 @@
+else: max_layer_size, max_layer_names = 0, []
+if reserve_max_layer: max_layer_size, max_layer_names = get_max_layer_size(...)

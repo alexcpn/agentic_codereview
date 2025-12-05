@@ -1,0 +1,38 @@
+ai_generated_smell: true
+breaking_change_risk: low
+category: testing
+code_snippet: assert len(w) == 0
+cwe: N/A
+file: tests/test_modeling_utils.py
+fix:
+  follow_up:
+  - Extend tests to cover invalid and extreme memory configurations
+  - Add explicit checks for expected warnings or exceptions in buffer limit violated
+    scenarios
+  patch: "# Example: after setting max_memory for buffer\nwith warnings.catch_warnings(record=True)\
+    \ as w:\n    warnings.simplefilter(\"always\")\n    device_map = infer_auto_device_map(model,\
+    \ max_memory={...})\n    assert any(\"buffer capacity exceeded\" in str(wi.message)\
+    \ for wi in w)\n# And/or assert for specific failure or fallback states."
+  strategy: Add explicit assertions for warning triggers and failure modes when buffer
+    capacities are exceeded.
+lines: 866-940
+migration_notes: ''
+owasp_top10: N/A
+references:
+- PyTorch documentation on device allocation and buffer management
+- Existing implementation details of `infer_auto_device_map`
+root_cause: ' Lack of explicit assertions for warning triggers in buffer capacity
+  edge cases.'
+severity: high
+tests:
+  cases:
+  - happy path with default `reserve_max_layer`=False
+  - edge case with buffer capacity exceeded
+  - negative or zero max_memory values
+  - extremely large buffer sizes
+  new_or_changed:
+  - test_infer_auto_device_map_buffer_warning_handling
+title: Insufficient explicit testing for `reserve_max_layer` impact on buffer overflow
+  warnings
+why_it_matters: Buffer overflow scenarios should be explicitly tested to prevent silent
+  failures or overlooked regressions.
