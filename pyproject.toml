@@ -20,4 +20,5 @@ dependencies = [
     "grpcio-tools>=1.60.0",
     "nmagents>=0.1.0",
     "load-dotenv>=0.1.0",
+    "redis>=5.0.0",
 ]

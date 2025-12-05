@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 from nmagents.command import CallLLM, ToolCall, ToolList
 from nmagents.utils import parse_json_response_with_repair, execute_step_tools
 from pathlib import Path
+import redis
+import json
 
 # Configure logging
 log.basicConfig(level=log.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -57,6 +59,12 @@ def process_file_review(file_path: str, diff: str, repo_url: str, pr_number: int
 async def _process_file_review_async(file_path: str, diff: str, repo_url: str, pr_number: int, tool_schemas_content: str, step_schema_content: str, time_hash: str):
     log.info(f"Starting review for {file_path}")
     
+    # Initialize Redis client
+    redis_host = os.getenv("REDIS_HOST", "localhost")
+    redis_port = int(os.getenv("REDIS_PORT"))
+    redis_client = redis.Redis(host=redis_host, port=redis_port, db=0)
+    stream_key = f"review:stream:{repo_url.rstrip('/').split('/')[-1]}:{pr_number}"
+    
     # Re-initialize clients inside the remote task
     api_key = os.getenv("OPENAI_API_KEY")
     openai_client = OpenAI(api_key=api_key, base_url="https://api.openai.com/v1")
@@ -97,6 +105,16 @@ async def _process_file_review_async(file_path: str, diff: str, repo_url: str, p
         plan_log_path = logs_dir / f"plan_{safe_filename}.yaml"
         with open(plan_log_path, "w", encoding="utf-8") as f:
             yaml.dump(response_data, f)
+
+        # Publish plan to Redis
+        try:
+            redis_client.xadd(stream_key, {
+                "type": "plan",
+                "file_path": file_path,
+                "content": json.dumps(response_data)
+            })
+        except Exception as e:
+            log.error(f"Failed to write plan to Redis: {e}")
         
         steps = response_data.get("steps", [])
         
@@ -135,6 +153,17 @@ async def _process_file_review_async(file_path: str, diff: str, repo_url: str, p
                     "step_name": name,
                     "result": step_data
                 })
+
+                # Publish step result to Redis
+                try:
+                    redis_client.xadd(stream_key, {
+                        "type": "step",
+                        "file_path": file_path,
+                        "step_name": name,
+                        "content": json.dumps(step_data)
+                    })
+                except Exception as e:
+                    log.error(f"Failed to write step to Redis: {e}")
                 
             except Exception as e:
                 log.error(f"Failed to execute step {name} for {file_path}: {e}")

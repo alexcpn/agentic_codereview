@@ -181,3 +181,54 @@ When you are done:
 ray stop
 ```
 
+# Running with persistent Redis DB
+
+1. Run Redis with persistent storage:
+
+```
+docker run -d \
+  -p 6380:6379 \
+  --name redis-review \
+  -v $(pwd)/redis-data:/data \
+  redis \
+  redis-server --appendonly yes
+```
+
+2. Start Ray
+```bash
+uv run ray start --head
+```
+
+2. Run the code review mcp server
+
+```bash
+git clone https://github.com/alexcpn/codereview_mcp_server.git
+cd codereview_mcp_server
+uv run http_server.py
+```
+
+3. Run the Agent Service
+
+
+```bash
+
+# give these in .env file or below
+
+export OPENAI_API_KEY=sk-YOUR_KEY
+export AST_MCP_SERVER_URL=http://127.0.0.1:7860/mcp/ 
+export RAY_ADDRESS="auto"  # Connects to the local Ray instance
+export REDIS_PORT=6380
+uv run agent_interface.py
+
+
+4. Run the redis reader
+
+```bash
+python redis_reader.py --repo-url https://github.com/huggingface/accelerate --pr-number 3321 --redis-port 6380
+```
+
+5. Run the Client
+In a separate terminal, run the test client:
+```bash
+uv run  test_client.py
+```
