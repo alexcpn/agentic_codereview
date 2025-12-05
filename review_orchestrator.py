@@ -310,7 +310,9 @@ class CodeReviewOrchestrator:
                 redis_client.xadd(stream_key, {
                     "type": "summary",
                     "file_path": "PR_SUMMARY",
-                    "content": final_summary
+                    "content": final_summary,
+                    "repo_url": repo_url,
+                    "pr_number": str(pr_number)
                 })
                 redis_client.close()
             except Exception as e:

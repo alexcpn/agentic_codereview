@@ -194,7 +194,17 @@ docker run -d \
   redis-server --appendonly yes
 ```
 
-2. Start Ray
+To delete older jobs
+
+```
+redis-cli --scan --pattern "review:*" | xargs redis-cli del
+```
+
+
+2. Start Ray 
+
+Install Ray in your environment and start it
+
 ```bash
 uv run ray start --head
 ```
@@ -214,11 +224,22 @@ Run the webserver
 Note - see the .env (copy) file and create a .env file with the same variables but correct values
 
 ```
-uv run web_server.py 
+OPENAI_API_KEY=xxx
+REDIS_PORT=6380
+AST_MCP_SERVER_URL=http://127.0.0.1:7860/mcp/
+RAY_ADDRESS="auto"
 ```
 
+```
+uv run web_server.py 
+```
+This will start the web server on port 8000
 
-## CLI flow
+
+---
+
+
+### CLI flow for Debuggging
 
 1. Run the Agent Service
 
