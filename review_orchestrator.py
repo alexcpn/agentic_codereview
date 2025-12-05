@@ -303,6 +303,19 @@ class CodeReviewOrchestrator:
             
             final_summary = summary_llm_command.execute(summary_prompt)
             
+            # Publish summary to Redis
+            try:
+                redis_client = redis.Redis(host=redis_host, port=redis_port, db=0)
+                stream_key = f"review:stream:{repo_url.rstrip('/').split('/')[-1]}:{pr_number}:{time_hash}"
+                redis_client.xadd(stream_key, {
+                    "type": "summary",
+                    "file_path": "PR_SUMMARY",
+                    "content": final_summary
+                })
+                redis_client.close()
+            except Exception as e:
+                log.error(f"Failed to write summary to Redis: {e}")
+
             yield {
                 "file_path": "PR_SUMMARY",
                 "comment": f"# Consolidated PR Summary\n\n{final_summary}"

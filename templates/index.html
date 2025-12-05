@@ -121,6 +121,18 @@
 
         <main class="flex-1 overflow-y-auto p-6 space-y-6" id="mainContent">
             <!-- Plan Section -->
+            <!-- Summary Section -->
+            <div id="summaryContainer" class="hidden mb-8">
+                <div class="bg-white rounded-lg shadow border-l-4 border-purple-500 overflow-hidden">
+                    <div class="p-4 border-b border-gray-100">
+                        <h3 class="text-lg font-semibold text-purple-700">Executive Summary</h3>
+                    </div>
+                    <div id="summaryContent" class="p-6 prose prose-sm max-w-none text-gray-700 bg-gray-50">
+                        <!-- Summary will be injected here -->
+                    </div>
+                </div>
+            </div>
+
             <!-- Files Container -->
             <div id="filesContainer" class="space-y-8">
                 <!-- File reviews will be appended here -->
@@ -237,6 +249,8 @@
 
             // Clear previous content
             filesContainer.innerHTML = '';
+            document.getElementById('summaryContainer').classList.add('hidden');
+            document.getElementById('summaryContent').innerHTML = '';
 
             // Close existing stream
             if (eventSource) {
@@ -298,17 +312,20 @@
                 content = { raw: data.content };
             }
 
-            // Get or create file section
-            let fileSection = document.getElementById(`file-${btoa(filePath)}`);
-            if (!fileSection) {
-                log(`Creating new section for ${filePath}`);
-                fileSection = createFileSection(filePath);
-                filesContainer.appendChild(fileSection);
+            // Get or create file section (skip for summary)
+            let fileSection = null;
+            if (type !== 'summary') {
+                fileSection = document.getElementById(`file-${btoa(filePath)}`);
+                if (!fileSection) {
+                    log(`Creating new section for ${filePath}`);
+                    fileSection = createFileSection(filePath);
+                    filesContainer.appendChild(fileSection);
+                }
             }
 
-            const planContent = fileSection.querySelector('.plan-content');
-            const planSection = fileSection.querySelector('.plan-section');
-            const stepsSection = fileSection.querySelector('.steps-section');
+            const planContent = fileSection ? fileSection.querySelector('.plan-content') : null;
+            const planSection = fileSection ? fileSection.querySelector('.plan-section') : null;
+            const stepsSection = fileSection ? fileSection.querySelector('.steps-section') : null;
 
             if (type === 'plan') {
                 planSection.classList.remove('hidden');
@@ -341,6 +358,21 @@
                     </div>
                 `;
                 stepsSection.appendChild(div);
+            } else if (type === 'summary') {
+                const summaryContainer = document.getElementById('summaryContainer');
+                const summaryContent = document.getElementById('summaryContent');
+                summaryContainer.classList.remove('hidden');
+
+                // Simple markdown rendering (bold, headers, lists)
+                let html = data.content
+                    .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mb-4">$1</h1>')
+                    .replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold mb-3 mt-4">$1</h2>')
+                    .replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold mb-2 mt-3">$1</h3>')
+                    .replace(/\*\*(.*)\*\*/gim, '<b>$1</b>')
+                    .replace(/^\- (.*$)/gim, '<li class="ml-4">$1</li>')
+                    .replace(/\n/gim, '<br>');
+
+                summaryContent.innerHTML = html;
             }
         }
 
