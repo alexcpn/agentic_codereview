@@ -1,3 +1,4 @@
 OPENAI_API_KEY=<add your OPENAI key>
 REDIS_PORT=6380
-
+AST_MCP_SERVER_URL=http://127.0.0.1:7860/mcp/
+RAY_ADDRESS="auto"

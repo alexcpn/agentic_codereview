@@ -207,7 +207,20 @@ cd codereview_mcp_server
 uv run http_server.py
 ```
 
-3. Run the Agent Service
+## GUI Flow
+
+Run the webserver
+
+Note - see the .env (copy) file and create a .env file with the same variables but correct values
+
+```
+uv run web_server.py 
+```
+
+
+## CLI flow
+
+1. Run the Agent Service
 
 
 ```bash
@@ -221,13 +234,13 @@ export REDIS_PORT=6380
 uv run agent_interface.py
 
 
-4. Run the redis reader
+2. Run the redis reader
 
 ```bash
 python redis_reader.py --repo-url https://github.com/huggingface/accelerate --pr-number 3321 --redis-port 6380
 ```
 
-5. Run the Client
+3. Run the Client
 In a separate terminal, run the test client:
 ```bash
 uv run  test_client.py

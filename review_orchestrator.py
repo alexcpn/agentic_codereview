@@ -102,6 +102,13 @@ async def _process_file_review_async(file_path: str, diff: str, repo_url: str, p
             context_label="plan",
         )
         
+        if not response_data:
+            log.error(f"Failed to parse plan for {file_path}")
+            return {
+                "file_path": file_path,
+                "results": [{"step_name": "plan", "error": "Failed to parse plan"}]
+            }
+
         # Save plan log
         safe_filename = file_path.replace("/", "_").replace("\\", "_")
         repo_name = repo_url.rstrip('/').split('/')[-1]
@@ -151,6 +158,14 @@ async def _process_file_review_async(file_path: str, diff: str, repo_url: str, p
                     context_label=f"step {name}",
                 )
                 
+                if not step_data:
+                    log.error(f"Failed to parse result for step {name}")
+                    step_execution_results.append({
+                        "step_name": name,
+                        "error": "Failed to parse step result"
+                    })
+                    continue
+
                 # Save step log
                 step_log_path = logs_dir / f"step_{name}_{safe_filename}.yaml"
                 with open(step_log_path, "w", encoding="utf-8") as f:

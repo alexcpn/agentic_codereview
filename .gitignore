@@ -4,3 +4,4 @@ protos/agent_pb2.py
 logs/*
 */__pycache__/*
 __pycache__/review_orchestrator.cpython-310.pyc
+redis-data/dump.rdb

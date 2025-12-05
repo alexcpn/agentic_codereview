@@ -36,9 +36,17 @@ async def trigger_review(request: ReviewRequest, background_tasks: BackgroundTas
     from datetime import datetime
     time_hash = datetime.now().strftime("%Y%m%d%H%M%S")
     
+    # Add run to history immediately
+    redis_host = os.getenv("REDIS_HOST", "localhost")
+    redis_port = int(os.getenv("REDIS_PORT", 6380))
+    r = redis.Redis(host=redis_host, port=redis_port, db=0, decode_responses=True)
+    repo_name = request.repo_url.rstrip('/').split('/')[-1]
+    runs_key = f"review:runs:{repo_name}:{request.pr_number}"
+    await r.sadd(runs_key, time_hash)
+    await r.close()
+
     background_tasks.add_task(run_review, request.repo_url, request.pr_number, time_hash)
     
-    repo_name = request.repo_url.rstrip('/').split('/')[-1]
     return {"status": "Review started", "time_hash": time_hash, "stream_url": f"/stream/{repo_name}/{request.pr_number}/{time_hash}"}
 
 async def run_review(repo_url: str, pr_number: int, time_hash: str):
@@ -57,6 +65,35 @@ async def list_runs(repo_name: str, pr_number: int):
     try:
         runs = await r.smembers(runs_key)
         return {"runs": sorted(list(runs), reverse=True)}
+    finally:
+        await r.close()
+
+@app.get("/runs")
+async def list_all_runs():
+    redis_host = os.getenv("REDIS_HOST", "localhost")
+    redis_port = int(os.getenv("REDIS_PORT", 6380))
+    r = redis.Redis(host=redis_host, port=redis_port, db=0, decode_responses=True)
+    
+    try:
+        keys = await r.keys("review:runs:*:*")
+        all_runs = []
+        for key in keys:
+            # key format: review:runs:repo_name:pr_number
+            parts = key.split(":")
+            if len(parts) >= 4:
+                repo_name = parts[2]
+                pr_number = parts[3]
+                runs = await r.smembers(key)
+                for run in runs:
+                    all_runs.append({
+                        "repo_name": repo_name,
+                        "pr_number": pr_number,
+                        "time_hash": run
+                    })
+        
+        # Sort by time_hash descending
+        all_runs.sort(key=lambda x: x["time_hash"], reverse=True)
+        return {"runs": all_runs}
     finally:
         await r.close()
 

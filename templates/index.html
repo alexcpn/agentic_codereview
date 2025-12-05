@@ -32,6 +32,36 @@
         .sidebar-scroll::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
+
+        /* JSON Renderer Styles */
+        .json-key {
+            color: #4b5563;
+            font-weight: 600;
+        }
+
+        .json-string {
+            color: #059669;
+        }
+
+        .json-number {
+            color: #d97706;
+        }
+
+        .json-boolean {
+            color: #7c3aed;
+        }
+
+        .json-null {
+            color: #9ca3af;
+        }
+
+        .json-block {
+            margin-left: 1.5rem;
+            border-left: 2px solid #e5e7eb;
+            padding-left: 0.5rem;
+            margin-top: 0.25rem;
+            margin-bottom: 0.25rem;
+        }
     </style>
 </head>
 
@@ -53,14 +83,20 @@
                 </div>
                 <div>
                     <label for="prNumber" class="block text-xs font-medium text-gray-700">PR #</label>
-                    <input type="number" id="prNumber" name="prNumber" required
+                    <input type="text" id="prNumber" name="prNumber" required
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs p-2 border"
                         placeholder="123">
                 </div>
-                <button type="submit"
-                    class="w-full justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                    Trigger Review
-                </button>
+                <div class="flex space-x-2">
+                    <button type="button" id="fetchHistoryBtn"
+                        class="flex-1 justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Fetch History
+                    </button>
+                    <button type="submit"
+                        class="flex-1 justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Trigger Review
+                    </button>
+                </div>
             </form>
         </div>
 
@@ -77,29 +113,29 @@
     <div class="flex-1 flex flex-col h-full overflow-hidden">
         <header class="bg-white shadow-sm p-4 flex justify-between items-center z-10">
             <h2 id="currentRunTitle" class="text-lg font-medium text-gray-900">Select a run or trigger a new one</h2>
-            <span id="connectionStatus"
-                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                Disconnected
-            </span>
+            <div class="flex items-center space-x-3">
+                <button id="refreshBtn" onclick="refreshCurrentRun()"
+                    class="hidden px-3 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Refresh
+                </button>
+                <span id="connectionStatus"
+                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                    Disconnected
+                </span>
+            </div>
         </header>
 
         <main class="flex-1 overflow-y-auto p-6 space-y-6" id="mainContent">
             <!-- Plan Section -->
-            <div id="planSection" class="hidden">
-                <div class="bg-white rounded-lg shadow border-l-4 border-blue-500">
-                    <div class="p-4 border-b border-gray-100">
-                        <h3 class="text-lg font-semibold text-blue-700">Review Plan</h3>
-                    </div>
-                    <div class="p-4">
-                        <pre id="planContent"
-                            class="bg-gray-50 p-4 rounded text-sm overflow-x-auto font-mono text-gray-700"></pre>
-                    </div>
-                </div>
+            <!-- Files Container -->
+            <div id="filesContainer" class="space-y-8">
+                <!-- File reviews will be appended here -->
             </div>
 
-            <!-- Steps Section -->
-            <div id="stepsSection" class="space-y-4">
-                <!-- Steps will be appended here -->
+            <!-- Debug Log -->
+            <div class="mt-8 p-4 bg-gray-800 text-green-400 rounded text-xs font-mono hidden" id="debugLog">
+                <h3 class="font-bold border-b border-gray-700 mb-2">Debug Log</h3>
+                <div id="debugContent" class="h-32 overflow-y-auto"></div>
             </div>
         </main>
     </div>
@@ -107,10 +143,7 @@
     <script>
         const form = document.getElementById('reviewForm');
         const runsList = document.getElementById('runsList');
-        const mainContent = document.getElementById('mainContent');
-        const planSection = document.getElementById('planSection');
-        const planContent = document.getElementById('planContent');
-        const stepsSection = document.getElementById('stepsSection');
+        const filesContainer = document.getElementById('filesContainer');
         const currentRunTitle = document.getElementById('currentRunTitle');
         const connectionStatus = document.getElementById('connectionStatus');
 
@@ -144,31 +177,62 @@
 
             runs.forEach(run => {
                 const div = document.createElement('div');
+
+                let timeHash, repoName, prNumber;
+
+                if (typeof run === 'object') {
+                    timeHash = run.time_hash;
+                    repoName = run.repo_name;
+                    prNumber = run.pr_number;
+                } else {
+                    timeHash = run;
+                    repoName = currentRepo;
+                    prNumber = currentPr;
+                }
+
                 // Format timestamp: YYYYMMDDHHMMSS -> Local Date Time
-                const year = run.substring(0, 4);
-                const month = run.substring(4, 6);
-                const day = run.substring(6, 8);
-                const hour = run.substring(8, 10);
-                const minute = run.substring(10, 12);
-                const second = run.substring(12, 14);
+                const year = timeHash.substring(0, 4);
+                const month = timeHash.substring(4, 6);
+                const day = timeHash.substring(6, 8);
+                const hour = timeHash.substring(8, 10);
+                const minute = timeHash.substring(10, 12);
+                const second = timeHash.substring(12, 14);
                 const date = new Date(year, month - 1, day, hour, minute, second);
 
                 div.className = 'p-3 bg-white rounded border border-gray-200 hover:border-indigo-500 cursor-pointer transition-colors shadow-sm';
-                div.innerHTML = `
-                    <div class="text-sm font-medium text-gray-900">Run ${run}</div>
-                    <div class="text-xs text-gray-500">${date.toLocaleString()}</div>
-                `;
-                div.onclick = () => loadRun(run);
+
+                let content = `<div class="text-sm font-medium text-gray-900">Run ${timeHash}</div>`;
+                if (typeof run === 'object') {
+                    content += `<div class="text-xs text-indigo-600 font-semibold mb-1">${repoName} #${prNumber}</div>`;
+                }
+                content += `<div class="text-xs text-gray-500">${date.toLocaleString()}</div>`;
+
+                div.innerHTML = content;
+                div.onclick = () => {
+                    // Update context if switching runs
+                    if (repoName && prNumber) {
+                        currentRepo = repoName;
+                        currentPr = prNumber;
+                        // Also update inputs to reflect current selection
+                        document.getElementById('repoUrl').value = `https://github.com/.../${repoName}`; // Approximate
+                        document.getElementById('prNumber').value = prNumber;
+                    }
+                    loadRun(timeHash);
+                };
                 runsList.appendChild(div);
             });
         }
 
         function loadRun(timeHash) {
+            log(`Loading run: ${timeHash}`);
+            currentRunHash = timeHash;
+            document.getElementById('refreshBtn').classList.remove('hidden');
+
             // Update UI
-            currentRunTitle.textContent = `Viewing Run: ${timeHash}`;
-            planSection.classList.add('hidden');
-            planContent.textContent = '';
-            stepsSection.innerHTML = '';
+            currentRunTitle.textContent = `Viewing Run: ${timeHash} for Task: Code Review of PR ${currentRepo} #${currentPr}`;
+
+            // Clear previous content
+            filesContainer.innerHTML = '';
 
             // Close existing stream
             if (eventSource) {
@@ -177,6 +241,7 @@
 
             // Start new stream
             const streamUrl = `/stream/${currentRepo}/${currentPr}/${timeHash}`;
+            log(`Connecting to stream: ${streamUrl}`);
             connectStream(streamUrl);
         }
 
@@ -187,16 +252,23 @@
             eventSource = new EventSource(url);
 
             eventSource.onopen = () => {
+                log('Stream connected');
                 connectionStatus.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800';
                 connectionStatus.textContent = 'Live';
             };
 
             eventSource.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                renderEvent(data);
+                // log(`Received event: ${event.data.substring(0, 50)}...`);
+                try {
+                    const data = JSON.parse(event.data);
+                    renderEvent(data);
+                } catch (e) {
+                    log(`Error parsing event: ${e}`);
+                }
             };
 
             eventSource.onerror = (error) => {
+                log('Stream error');
                 console.error('EventSource failed:', error);
                 connectionStatus.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800';
                 connectionStatus.textContent = 'Disconnected';
@@ -206,6 +278,15 @@
 
         function renderEvent(data) {
             const type = data.type;
+            const filePath = data.file_path;
+
+            log(`Rendering event: ${type} for ${filePath}`);
+
+            if (!filePath) {
+                log('Missing filePath, skipping');
+                return;
+            }
+
             let content = {};
             try {
                 content = JSON.parse(data.content || '{}');
@@ -213,9 +294,26 @@
                 content = { raw: data.content };
             }
 
+            // Get or create file section
+            let fileSection = document.getElementById(`file-${btoa(filePath)}`);
+            if (!fileSection) {
+                log(`Creating new section for ${filePath}`);
+                fileSection = createFileSection(filePath);
+                filesContainer.appendChild(fileSection);
+            }
+
+            const planContent = fileSection.querySelector('.plan-content');
+            const planSection = fileSection.querySelector('.plan-section');
+            const stepsSection = fileSection.querySelector('.steps-section');
+
             if (type === 'plan') {
                 planSection.classList.remove('hidden');
-                planContent.textContent = JSON.stringify(content, null, 2);
+                planContent.innerHTML = renderContent(content);
+
+                // Update header with timestamp if available (optional, or just keep static)
+                // const header = fileSection.querySelector('.plan-header-text');
+                // header.textContent = `Review Plan for ${filePath}`;
+
             } else if (type === 'step') {
                 const stepName = data.step_name;
                 const stepId = `step-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -226,18 +324,101 @@
                     <div class="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors" onclick="toggleStep('${stepId}')">
                         <div class="flex items-center space-x-3">
                             <span class="flex-shrink-0 h-6 w-6 rounded-full bg-green-100 flex items-center justify-center text-green-600">✓</span>
-                            <h3 class="text-md font-medium text-gray-900">${stepName}</h3>
+                            <div>
+                                <h3 class="text-md font-medium text-gray-900">${stepName}</h3>
+                            </div>
                         </div>
                         <span class="text-gray-400 transform transition-transform duration-200" id="icon-${stepId}">▼</span>
                     </div>
                     <div id="${stepId}" class="step-content border-t border-gray-100 bg-gray-50">
-                        <div class="p-4">
-                            <pre class="text-xs overflow-x-auto font-mono text-gray-700">${JSON.stringify(content, null, 2)}</pre>
+                        <div class="p-4 text-sm font-mono text-gray-700 overflow-x-auto">
+                            ${renderContent(content)}
                         </div>
                     </div>
                 `;
                 stepsSection.appendChild(div);
             }
+        }
+
+        function createFileSection(filePath) {
+            const safeId = btoa(filePath);
+            const div = document.createElement('div');
+            div.id = `file-${safeId}`;
+            div.className = 'space-y-4';
+
+            div.innerHTML = `
+                <div class="flex items-center space-x-2 mb-4">
+                    <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <h2 class="text-xl font-bold text-gray-800">Review Plan for File: ${filePath}</h2>
+                </div>
+
+                <div class="plan-section hidden">
+                    <div class="bg-white rounded-lg shadow border-l-4 border-blue-500 overflow-hidden">
+                        <div class="p-4 border-b border-gray-100 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors"
+                            onclick="togglePlan('${safeId}')">
+                            <h3 class="plan-header-text text-lg font-semibold text-blue-700">Review Plan</h3>
+                            <span class="text-gray-400 transform transition-transform duration-200" id="planIcon-${safeId}">▼</span>
+                        </div>
+                        <div id="planBody-${safeId}" class="p-4 transition-all duration-200">
+                            <pre class="plan-content bg-gray-50 p-4 rounded text-sm overflow-x-auto font-mono text-gray-700 mb-6"></pre>
+
+                            <h4 class="text-sm font-semibold text-gray-600 mb-3 uppercase tracking-wider">Execution Steps</h4>
+                            <div class="steps-section space-y-4">
+                                <!-- Steps will be appended here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return div;
+        }
+
+        function renderContent(data) {
+            if (typeof data === 'object' && data !== null) {
+                if (Array.isArray(data)) {
+                    if (data.length === 0) return '<span class="text-gray-400">[]</span>';
+                    let html = '<div class="json-block">';
+                    data.forEach(item => {
+                        html += `<div>${renderContent(item)}</div>`;
+                    });
+                    html += '</div>';
+                    return html;
+                } else {
+                    if (Object.keys(data).length === 0) return '<span class="text-gray-400">{}</span>';
+                    let html = '<div class="json-block">';
+                    for (const [key, value] of Object.entries(data)) {
+                        html += `<div class="mb-1"><span class="json-key">${key}:</span> ${renderContent(value)}</div>`;
+                    }
+                    html += '</div>';
+                    return html;
+                }
+            } else if (typeof data === 'string') {
+                // Check if it looks like a code block or long text
+                if (data.includes('\n') || data.length > 50) {
+                    return `<div class="mt-1 p-2 bg-gray-100 rounded text-xs whitespace-pre-wrap border border-gray-200 text-gray-800">${escapeHtml(data)}</div>`;
+                }
+                return `<span class="json-string">"${escapeHtml(data)}"</span>`;
+            } else if (typeof data === 'number') {
+                return `<span class="json-number">${data}</span>`;
+            } else if (typeof data === 'boolean') {
+                return `<span class="json-boolean">${data}</span>`;
+            } else if (data === null) {
+                return `<span class="json-null">null</span>`;
+            }
+            return String(data);
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, function (m) { return map[m]; });
         }
 
         window.toggleStep = function (id) {
@@ -251,11 +432,27 @@
             }
         }
 
+        window.togglePlan = function (id) {
+            const el = document.getElementById(`planBody-${id}`);
+            const icon = document.getElementById(`planIcon-${id}`);
+            if (el.style.display === 'none') {
+                el.style.display = 'block';
+                icon.style.transform = 'rotate(0deg)';
+            } else {
+                el.style.display = 'none';
+                icon.style.transform = 'rotate(-90deg)';
+            }
+        }
+
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const repoUrl = document.getElementById('repoUrl').value;
             const prNumber = document.getElementById('prNumber').value;
+
+            // Save to localStorage
+            localStorage.setItem('lastRepoUrl', repoUrl);
+            localStorage.setItem('lastPrNumber', prNumber);
 
             // Refresh runs list just in case
             await loadRuns(repoUrl, prNumber);
@@ -283,16 +480,49 @@
             }
         });
 
-        // Auto-load runs if fields are pre-filled (optional)
-        const repoUrlInput = document.getElementById('repoUrl');
-        const prNumberInput = document.getElementById('prNumber');
+        // Helper to fetch all runs
+        async function fetchAllRuns() {
+            try {
+                const response = await fetch('/runs');
+                const data = await response.json();
+                renderRuns(data.runs);
+            } catch (error) {
+                console.error('Failed to load all runs:', error);
+            }
+        }
 
-        [repoUrlInput, prNumberInput].forEach(input => {
-            input.addEventListener('blur', () => {
-                loadRuns(repoUrlInput.value, prNumberInput.value);
-            });
+        document.getElementById('fetchHistoryBtn').addEventListener('click', fetchAllRuns);
+
+        // Load saved values on startup
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedRepoUrl = localStorage.getItem('lastRepoUrl');
+            const savedPrNumber = localStorage.getItem('lastPrNumber');
+
+            if (savedRepoUrl) repoUrlInput.value = savedRepoUrl;
+            if (savedPrNumber) prNumberInput.value = savedPrNumber;
+
+            // Always fetch all runs on startup
+            fetchAllRuns();
         });
 
+        let currentRunHash = '';
+
+        function refreshCurrentRun() {
+            if (currentRunHash) {
+                loadRun(currentRunHash);
+            }
+        }
+
+        // ... (rest of script) ...
+        function log(msg) {
+            const debugLog = document.getElementById('debugLog');
+            const debugContent = document.getElementById('debugContent');
+            debugLog.classList.remove('hidden');
+            const div = document.createElement('div');
+            div.textContent = `${new Date().toISOString().split('T')[1]} - ${msg}`;
+            debugContent.appendChild(div);
+            debugContent.scrollTop = debugContent.scrollHeight;
+        }
     </script>
 </body>
 
