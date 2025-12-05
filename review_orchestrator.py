@@ -183,6 +183,9 @@ class CodeReviewOrchestrator:
                 file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash
             ))
             
+        # Collect all reviews for final summary
+        all_reviews_context = ""
+        
         # Process results as they complete
         while pending_futures:
             done_futures, pending_futures = ray.wait(pending_futures)
@@ -198,6 +201,8 @@ class CodeReviewOrchestrator:
                         else:
                             file_summary += f"- {step['step_name']}: {step['result']}\n"
                     
+                    all_reviews_context += file_summary + "\n" + "-"*40 + "\n"
+                    
                     yield {
                         "file_path": result['file_path'],
                         "comment": file_summary
@@ -208,3 +213,42 @@ class CodeReviewOrchestrator:
                         "file_path": "system",
                         "comment": f"Error: {str(e)}"
                     }
+        
+        # Generate Final Consolidated Summary
+        log.info("Generating consolidated PR summary...")
+        try:
+            api_key = os.getenv("OPENAI_API_KEY")
+            openai_client = OpenAI(api_key=api_key, base_url="https://api.openai.com/v1")
+            summary_llm_command = CallLLM(openai_client, "Summarize PR", MODEL_NAME, COST_PER_TOKEN_INPUT, COST_PER_TOKEN_OUTPUT, 0.5)
+            
+            summary_prompt = f"""
+            You are a Principal Software Engineer. 
+            Review the following code review results for PR #{pr_number} in {repo_url}.
+            
+            Aggregated Reviews:
+            {all_reviews_context}
+            
+            Please provide a concise Executive Summary of the PR.
+            1. Highlight the most critical issues found across all files.
+            2. Identify any recurring patterns or code quality concerns.
+            3. Provide a final recommendation (Merge, Request Changes, etc.).
+            """
+            
+            final_summary = summary_llm_command.execute(summary_prompt)
+            
+            yield {
+                "file_path": "PR_SUMMARY",
+                "comment": f"# Consolidated PR Summary\n\n{final_summary}"
+            }
+            
+            # Save summary log
+            logs_dir = Path("logs") / f"{repo_url.rstrip('/').split('/')[-1]}_PR{pr_number}_{time_hash}"
+            with open(logs_dir / "pr_summary.md", "w", encoding="utf-8") as f:
+                f.write(final_summary)
+                
+        except Exception as e:
+            log.error(f"Failed to generate final summary: {e}")
+            yield {
+                "file_path": "PR_SUMMARY",
+                "comment": f"Failed to generate summary: {e}"
+            }
