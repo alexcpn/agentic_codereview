@@ -52,11 +52,11 @@ def load_prompt(**placeholders) -> str:
     return template
 
 @ray.remote
-def process_file_review(file_path: str, diff: str, repo_url: str, pr_number: int, tool_schemas_content: str, step_schema_content: str, time_hash: str, redis_host: str, redis_port: int):
+def process_file_review(file_path: str, diff: str, repo_url: str, pr_number: int, tool_schemas_content: str, step_schema_content: str, time_hash: str, redis_host: str, redis_port: int, api_key: str | None = None, mcp_server_url: str | None = None):
     import asyncio
-    return asyncio.run(_process_file_review_async(file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash, redis_host, redis_port))
+    return asyncio.run(_process_file_review_async(file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash, redis_host, redis_port, api_key, mcp_server_url))
 
-async def _process_file_review_async(file_path: str, diff: str, repo_url: str, pr_number: int, tool_schemas_content: str, step_schema_content: str, time_hash: str, redis_host: str, redis_port: int):
+async def _process_file_review_async(file_path: str, diff: str, repo_url: str, pr_number: int, tool_schemas_content: str, step_schema_content: str, time_hash: str, redis_host: str, redis_port: int, api_key: str | None = None, mcp_server_url: str | None = None):
     log.info(f"Starting review for {file_path}")
     
     # Initialize Redis client
@@ -73,7 +73,8 @@ async def _process_file_review_async(file_path: str, diff: str, repo_url: str, p
         log.error(f"Failed to add run to history: {e}")
     
     # Re-initialize clients inside the remote task
-    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        api_key = os.getenv("OPENAI_API_KEY")
     openai_client = OpenAI(api_key=api_key, base_url="https://api.openai.com/v1")
     
     call_llm_command = CallLLM(openai_client, "Call the LLM", MODEL_NAME, COST_PER_TOKEN_INPUT, COST_PER_TOKEN_OUTPUT, 0.5)
@@ -81,7 +82,12 @@ async def _process_file_review_async(file_path: str, diff: str, repo_url: str, p
     
     step_execution_results = []
     
-    async with Client(AST_MCP_SERVER_URL) as ast_tool_client:
+    # Use passed URL or fallback to env var
+    mcp_url = mcp_server_url or AST_MCP_SERVER_URL
+    if not mcp_url.endswith("/"):
+        mcp_url = mcp_url + "/"
+
+    async with Client(mcp_url) as ast_tool_client:
         ast_tool_call_command = ToolCall(ast_tool_client, "Call tool")
         
         main_context = f""" Your task today is Code Reivew. You are given the following '{pr_number}' to review from the repo '{repo_url}' 
@@ -210,7 +216,7 @@ class CodeReviewOrchestrator:
         else:
             ray.init(ignore_reinit_error=True)
         
-    async def review_pr_stream(self, repo_url: str, pr_number: int, time_hash: str = None):
+    async def review_pr_stream(self, repo_url: str, pr_number: int, time_hash: str = None, api_key: str | None = None, mcp_server_url: str | None = None):
         log.info(f"Orchestrating review for {repo_url} PR #{pr_number}")
         
         # Get diffs
@@ -226,7 +232,12 @@ class CodeReviewOrchestrator:
             return
         
         # Get tool schemas (need to do this once)
-        async with Client(AST_MCP_SERVER_URL) as ast_tool_client:
+        # Use passed URL or fallback to env var
+        mcp_url = mcp_server_url or AST_MCP_SERVER_URL
+        if not mcp_url.endswith("/"):
+            mcp_url = mcp_url + "/"
+            
+        async with Client(mcp_url) as ast_tool_client:
             ast_tool_list_command = ToolList(ast_tool_client, "List tools")
             tool_schemas_content = await ast_tool_list_command.execute(None)
             
@@ -245,7 +256,7 @@ class CodeReviewOrchestrator:
         pending_futures = []
         for file_path, diff in file_diffs.items():
             pending_futures.append(process_file_review.remote(
-                file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash, redis_host, redis_port
+                file_path, diff, repo_url, pr_number, tool_schemas_content, step_schema_content, time_hash, redis_host, redis_port, api_key, mcp_url
             ))
             
         # Collect all reviews for final summary
@@ -284,7 +295,8 @@ class CodeReviewOrchestrator:
         # Generate Final Consolidated Summary
         log.info("Generating consolidated PR summary...")
         try:
-            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                api_key = os.getenv("OPENAI_API_KEY")
             openai_client = OpenAI(api_key=api_key, base_url="https://api.openai.com/v1")
             summary_llm_command = CallLLM(openai_client, "Summarize PR", MODEL_NAME, COST_PER_TOKEN_INPUT, COST_PER_TOKEN_OUTPUT, 0.5)
             

@@ -73,6 +73,8 @@ This is the simplest way to run the agent without Kubernetes complexity.
 Start a local Ray cluster instance:
 ```bash
 uv run ray start --head
+# if there is problem with start up, kill old process
+ray stop --force
 ```
 *Note: This starts Ray on your local machine. You can view the dashboard at http://127.0.0.1:8265*
 
@@ -113,6 +115,30 @@ This will start the web server on http://0.0.0.0:8000/
 You will get a UI to trigger the review and see triggered reviews and steps
 
 ![webpage](https://i.postimg.cc/vB2v53pk/image.png)
+
+## Deploying to Hugging Face Spaces
+
+This repository includes a configuration to deploy directly to Hugging Face Spaces (Docker SDK).
+
+1.  **Create a New Space**:
+    - Go to [Hugging Face Spaces](https://huggingface.co/spaces).
+    - Create a new Space.
+    - Select **Docker** as the SDK.
+
+2.  **Upload Files**:
+    - Upload the contents of this repository to your Space.
+    - **Important**: You must tell Hugging Face to use `Dockerfile.hf` instead of the default `Dockerfile`.
+    - You can do this by renaming `Dockerfile.hf` to `Dockerfile` in the Space, or by configuring the Space settings if supported.
+    - *Recommendation*: Rename `Dockerfile` to `Dockerfile.local` and `Dockerfile.hf` to `Dockerfile` before pushing to the Space.
+
+3.  **Set Secrets**:
+    - In your Space settings, go to **Settings > Variables and secrets**.
+    - Add a new secret: `OPENAI_API_KEY` with your API key.
+
+4.  **Run**:
+    - The Space will build and start.
+    - Once running, you will see the web interface.
+
 ---
 
 ## References

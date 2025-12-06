@@ -19,10 +19,38 @@ orchestrator = CodeReviewOrchestrator()
 class ReviewRequest(BaseModel):
     repo_url: str
     pr_number: int
+    openai_api_key: str | None = None
+    mcp_server_url: str | None = None
+
+class MCPRequest(BaseModel):
+    mcp_server_url: str
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
+
+@app.post("/list-tools")
+async def list_tools(request: MCPRequest):
+    from fastmcp import Client
+    from nmagents.command import ToolList
+    
+    try:
+        # Ensure URL ends with /
+        url = request.mcp_server_url
+        if not url.endswith("/"):
+            url = url + "/"
+            
+        async with Client(url) as client:
+            # We can't easily use ToolList command here as it returns a formatted string
+            # We'll use the client directly to list tools if possible, or parse the output
+            # fastmcp client doesn't expose list_tools directly in a simple way without calling the server
+            # But nmagents ToolList does exactly that.
+            
+            tool_list_command = ToolList(client, "List tools")
+            tools_description = await tool_list_command.execute(None)
+            return {"status": "success", "tools": tools_description}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.post("/review")
 async def trigger_review(request: ReviewRequest, background_tasks: BackgroundTasks):
@@ -45,14 +73,14 @@ async def trigger_review(request: ReviewRequest, background_tasks: BackgroundTas
     await r.sadd(runs_key, time_hash)
     await r.close()
 
-    background_tasks.add_task(run_review, request.repo_url, request.pr_number, time_hash)
+    background_tasks.add_task(run_review, request.repo_url, request.pr_number, time_hash, request.openai_api_key, request.mcp_server_url)
     
     return {"status": "Review started", "time_hash": time_hash, "stream_url": f"/stream/{repo_name}/{request.pr_number}/{time_hash}"}
 
-async def run_review(repo_url: str, pr_number: int, time_hash: str):
+async def run_review(repo_url: str, pr_number: int, time_hash: str, api_key: str | None = None, mcp_server_url: str | None = None):
     # Consume the generator to ensure it runs
     # Note: We need to update orchestrator.review_pr_stream to accept time_hash
-    async for _ in orchestrator.review_pr_stream(repo_url, pr_number, time_hash):
+    async for _ in orchestrator.review_pr_stream(repo_url, pr_number, time_hash, api_key, mcp_server_url):
         pass
 
 @app.get("/runs/{repo_name}/{pr_number}")

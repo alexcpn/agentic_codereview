@@ -5,3 +5,4 @@ logs/*
 */__pycache__/*
 __pycache__/review_orchestrator.cpython-310.pyc
 redis-data/dump.rdb
+.env2

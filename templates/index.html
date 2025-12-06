@@ -74,24 +74,38 @@
         </div>
 
         <div class="p-4 border-b">
-            <form id="reviewForm" class="space-y-3">
+            <div id="settingsPanel" class="space-y-3">
                 <div>
-                    <label for="prUrl" class="block text-xs font-medium text-gray-700">Github PR URL</label>
-                    <input type="text" id="prUrl" name="prUrl" required
+                    <label for="mcpUrl" class="block text-xs font-medium text-gray-700">MCP Server URL</label>
+                    <div class="flex space-x-2 mt-1">
+                        <input type="text" id="mcpUrl" name="mcpUrl"
+                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs p-2 border"
+                            placeholder="https://alexcpn-treesitter-mcp.hf.space/mcp/"
+                            value="https://alexcpn-treesitter-mcp.hf.space/mcp/">
+                        <button type="button" id="connectMcpBtn"
+                            class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-xs font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            Connect
+                        </button>
+                    </div>
+                    <div id="toolsList" class="mt-2 text-xs text-gray-600 hidden">
+                        <p class="font-semibold mb-1">Available Tools:</p>
+                        <ul class="list-disc pl-4 space-y-1" id="toolsListContent"></ul>
+                    </div>
+                </div>
+                <div>
+                    <label for="apiKey" class="block text-xs font-medium text-gray-700">OpenAI API Key
+                        (Optional)</label>
+                    <input type="password" id="apiKey" name="apiKey"
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-xs p-2 border"
-                        placeholder="https://github.com/owner/repo/pull/123">
+                        placeholder="sk-...">
                 </div>
                 <div class="flex space-x-2">
                     <button type="button" id="fetchHistoryBtn"
                         class="flex-1 justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                         Fetch History
                     </button>
-                    <button type="submit"
-                        class="flex-1 justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        Trigger Review
-                    </button>
                 </div>
-            </form>
+            </div>
         </div>
 
         <div class="flex-1 overflow-y-auto sidebar-scroll p-4">
@@ -120,6 +134,19 @@
         </header>
 
         <main class="flex-1 overflow-y-auto p-6 space-y-6" id="mainContent">
+            <!-- New Review Section -->
+            <div id="newReviewSection" class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                <label for="prUrl" class="block text-sm font-medium text-gray-700 mb-2">Start a New Review</label>
+                <div class="flex space-x-3">
+                    <input type="text" id="prUrl" name="prUrl"
+                        class="flex-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm p-2 border"
+                        placeholder="https://github.com/owner/repo/pull/123">
+                    <button type="button" id="triggerBtn"
+                        class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Trigger Review
+                    </button>
+                </div>
+            </div>
             <!-- Plan Section -->
             <!-- Summary Section -->
             <div id="summaryContainer" class="hidden mb-8">
@@ -147,7 +174,6 @@
     </div>
 
     <script>
-        const form = document.getElementById('reviewForm');
         const runsList = document.getElementById('runsList');
         const filesContainer = document.getElementById('filesContainer');
         const currentRunTitle = document.getElementById('currentRunTitle');
@@ -508,10 +534,66 @@
             return null;
         }
 
-        form.addEventListener('submit', async (e) => {
+        // MCP Connection Handler
+        document.getElementById('connectMcpBtn').addEventListener('click', async () => {
+            const mcpUrl = document.getElementById('mcpUrl').value;
+            const toolsList = document.getElementById('toolsList');
+            const toolsListContent = document.getElementById('toolsListContent');
+            const btn = document.getElementById('connectMcpBtn');
+
+            if (!mcpUrl) return;
+
+            btn.disabled = true;
+            btn.textContent = 'Connecting...';
+            toolsList.classList.add('hidden');
+
+            try {
+                const response = await fetch('/list-tools', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mcp_server_url: mcpUrl })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    let content = '';
+                    if (Array.isArray(data.tools)) {
+                        // Format array of tool objects
+                        content = data.tools.map(tool => {
+                            const name = tool.name || tool.inputSchema?.title || 'Unknown';
+                            const desc = tool.description || 'No description';
+                            return `<div class="mb-2">
+                                <span class="font-bold text-indigo-700">${name}</span>
+                                <p class="text-gray-600 ml-2">${desc}</p>
+                            </div>`;
+                        }).join('');
+                    } else if (typeof data.tools === 'object') {
+                        content = `<pre class="whitespace-pre-wrap font-mono bg-gray-50 p-2 rounded border">${JSON.stringify(data.tools, null, 2)}</pre>`;
+                    } else {
+                        content = `<pre class="whitespace-pre-wrap font-mono bg-gray-50 p-2 rounded border">${data.tools}</pre>`;
+                    }
+
+                    toolsListContent.innerHTML = content;
+                    toolsList.classList.remove('hidden');
+                    localStorage.setItem('mcpServerUrl', mcpUrl);
+                } else {
+                    alert('Failed to connect: ' + data.message);
+                }
+            } catch (e) {
+                alert('Error connecting to MCP server: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Connect';
+            }
+        });
+
+        document.getElementById('triggerBtn').addEventListener('click', async (e) => {
             e.preventDefault();
 
             const prUrl = document.getElementById('prUrl').value;
+            const apiKey = document.getElementById('apiKey').value;
+            const mcpUrl = document.getElementById('mcpUrl').value;
             const parsed = parsePrUrl(prUrl);
 
             if (!parsed) {
@@ -523,17 +605,33 @@
 
             // Save to localStorage
             localStorage.setItem('lastPrUrl', prUrl);
+            if (apiKey) {
+                localStorage.setItem('openaiApiKey', apiKey);
+            }
+            if (mcpUrl) {
+                localStorage.setItem('mcpServerUrl', mcpUrl);
+            }
 
             // Refresh runs list just in case
             await loadRuns(repoUrl, prNumber);
 
             try {
+                const btn = document.getElementById('triggerBtn');
+                const originalText = btn.textContent;
+                btn.disabled = true;
+                btn.textContent = 'Starting...';
+
                 const response = await fetch('/review', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ repo_url: repoUrl, pr_number: parseInt(prNumber) }),
+                    body: JSON.stringify({
+                        repo_url: repoUrl,
+                        pr_number: parseInt(prNumber),
+                        openai_api_key: apiKey || null,
+                        mcp_server_url: mcpUrl || null
+                    }),
                 });
 
                 const data = await response.json();
@@ -544,9 +642,14 @@
                 // Automatically select the new run
                 loadRun(data.time_hash);
 
+                btn.disabled = false;
+                btn.textContent = originalText;
+
             } catch (error) {
                 console.error('Error:', error);
                 alert('Failed to trigger review');
+                document.getElementById('triggerBtn').disabled = false;
+                document.getElementById('triggerBtn').textContent = 'Trigger Review';
             }
         });
 
@@ -566,10 +669,21 @@
         // Load saved values on startup
         window.addEventListener('DOMContentLoaded', () => {
             const savedPrUrl = localStorage.getItem('lastPrUrl');
+            const savedApiKey = localStorage.getItem('openaiApiKey');
+            const savedMcpUrl = localStorage.getItem('mcpServerUrl');
+
             const prUrlInput = document.getElementById('prUrl');
+            const apiKeyInput = document.getElementById('apiKey');
+            const mcpUrlInput = document.getElementById('mcpUrl');
 
             if (savedPrUrl) {
                 prUrlInput.value = savedPrUrl;
+            }
+            if (savedApiKey) {
+                apiKeyInput.value = savedApiKey;
+            }
+            if (savedMcpUrl) {
+                mcpUrlInput.value = savedMcpUrl;
             }
 
             // Always fetch all runs on startup
