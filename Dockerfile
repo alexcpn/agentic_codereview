@@ -31,6 +31,7 @@ RUN chmod +x start_hf.sh
 # but we need to make sure we can write to directories if needed.
 # HF Spaces usually run as user 1000.
 RUN useradd -m -u 1000 user
+RUN chown -R user:user /app
 USER user
 ENV HOME=/home/user \
     PATH=/home/user/.local/bin:$PATH

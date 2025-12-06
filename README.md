@@ -20,6 +20,10 @@ Agentic code review pipeline that plans, calls tools, and produces structured fi
 - Works with OpenAI or any OpenAI-compatible endpoint (ollam,vllm)
 - Ships as a FastAPI service, CLI helper, and Docker image
 
+Demo https://alexcpn-code-review-agent.hf.space/
+
+Using Tools https://alexcpn-treesitter-mcp.hf.space/mcp/
+
 ## How it works
 - Fetch the PR diff, ask the LLM for a per-file review plan, then execute each step.
 - MCP server ([codereview_mcp_server](https://github.com/alexcpn/codereview_mcp_server)) exposes AST tools (definitions, call-sites, docstrings) using [Tree-Sitter](https://tree-sitter.github.io/tree-sitter/).
