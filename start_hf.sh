@@ -3,7 +3,7 @@ set -e
 
 # Start Redis
 echo "Starting Redis..."
-redis-server --port 6380 --daemonize yes
+redis-server --port 6380 &
 
 # Start Ray
 echo "Starting Ray..."
